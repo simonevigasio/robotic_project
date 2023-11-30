@@ -5,7 +5,6 @@
 #include "Eigen/Dense"
 
 /* Standard Libraries */
-#include <vector>
 #include <iostream>
 #include <cmath>
 

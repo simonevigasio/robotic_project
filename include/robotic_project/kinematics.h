@@ -3,12 +3,8 @@
 
 #include "../src/Eigen/Dense"
 
-/* Vector composed of 6 double numbers */
+/* Vector composed by 6 doubles */
 typedef Eigen::Matrix<double, 6, 1> Vector6d;
-
-/* DH parameters */
-Vector6d a(0.0, -0.425, -0.3922, 0.0, 0.0, 0.0);
-Vector6d d(0.1625, 0.0, 0.0, 0.1333, 0.0997, 0.0996);
 
 /* Kinematics class incorporates the kinematic status of the ur5 robot given its six DH angles configuration */
 class Kinematics 
@@ -25,6 +21,13 @@ class Kinematics
 
         /* Direct Kinematics colputation of __pe__ and __Re__ */
         void direct_kinematics(Vector6d q);
+
+    private: 
+        /* DH params of UR5 */
+        Vector6d a, d, alfa;
+
+        /* Compute the transformation matrix from i to i-1 */
+        Eigen::Matrix4d generate_transformation_matrix(double a, double alfa, double d, double theta);
 };
 
 #endif
