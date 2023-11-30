@@ -1,24 +1,40 @@
+/* My lib */
+#include "robotic_project/kinematics.h"
+
 /* Eigen Library */
 #include "Eigen/Dense"
 
 /* Standard Libraries */
 #include <vector>
 #include <iostream>
+#include <cmath>
 
 /* ROS Libraries */
 #include "ros/ros.h"
 #include "sensor_msgs/JointState.h"
-#include "std_msgs/Float64MultiArray.h"
+#include "std_msgs/Float64MultiArray.h" 
 
-typedef Eigen::Matrix<double, 1, 8> RowVector8d;
 
-void callback(const sensor_msgs::JointState msg) {
-    RowVector8d joints;
-    for (int i=0; i<8; ++i) joints(i) = msg.position[i];
-    std::cout << joints << std::endl;
+void callback(const sensor_msgs::JointState msg) 
+{
+    /* angles values */
+    Eigen::VectorXd q(8);
+    for (int i=0; i<8; ++i) q(i)=msg.position[i];
+
+    /* print the results */
+    std::cout << q << std::endl;
+
+    /* arm angles */
+    Vector6d arm_q(q(4), q(3), q(0), q(5), q(6), q(7));
+
+    /* Compute the direct kinematics */
+    Kinematics kinObj(arm_q);
+    std::cout << kinObj.__pe__ << std::endl;
+    std::cout << kinObj.__Re__ << std::endl;
 }
 
-int main(int argc, char **argv){
+int main(int argc, char **argv)
+{
     ros::init(argc, argv, "ur5_joint_position_publisher");
     ros::NodeHandle nh;
 
@@ -29,7 +45,7 @@ int main(int argc, char **argv){
 
     while (ros::ok()) {
         std_msgs::Float64MultiArray jointCommand;
-        jointCommand.data = {-1.32, -2.78, -1.1, -1.63, -1.57, 3.49, 0.55, 1.3};  // Set your desired joint positions
+        jointCommand.data = {-0.32, -2.78, -0.1, -0.63, -0.57, 2.49, 0.55, 0.3};  // Set your desired joint positions
 
         pub.publish(jointCommand);
         ros::spinOnce();
