@@ -22,15 +22,15 @@ void callback(const sensor_msgs::JointState msg)
     for (int i=0; i<8; ++i) q(i)=msg.position[i];
 
     /* print the results */
-    std::cout << q << std::endl;
+    std::cout << "qe = " << std::endl << q << std::endl;
 
     /* arm angles */
     Vector6d arm_q(q(4), q(3), q(0), q(5), q(6), q(7));
 
     /* Compute the direct kinematics */
     Kinematics kinObj(arm_q);
-    std::cout << kinObj.__pe__ << std::endl;
-    std::cout << kinObj.__Re__ << std::endl;
+    std::cout << "pe = " << std::endl << kinObj.__pe__ << std::endl;
+    std::cout << "Re = " << std::endl << kinObj.__Re__ << std::endl;
 }
 
 int main(int argc, char **argv)

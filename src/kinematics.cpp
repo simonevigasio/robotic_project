@@ -2,11 +2,13 @@
 #include "Eigen/Dense"
 #include <cmath>
 
+/* Constructor */
 Kinematics::Kinematics(Vector6d q)
 {
     direct_kinematics(q);
 }
 
+/* Direct Kinematic computation */
 void Kinematics::direct_kinematics(Vector6d q) 
 {
     /* Homogeneous Transformation matrix from frame 0 to 1 */
