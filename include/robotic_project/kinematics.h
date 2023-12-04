@@ -7,11 +7,11 @@
 typedef Eigen::Matrix<double, 6, 1> Vector6d;
 
 /* Kinematics class incorporates the kinematic status of the ur5 robot given its six DH angles configuration */
-class Kinematics 
+class UR5_t
 {
     public:  
         /* Constructor */
-        Kinematics(Vector6d q);
+        UR5_t(Vector6d q);
 
         /* Where the end-effector stands in comparison with the frame 0 */
         Eigen::Vector3d __pe__;
@@ -19,12 +19,12 @@ class Kinematics
         /* Rotation matrix of the end-effector in comparison with the frame 0 */
         Eigen::Matrix3d __Re__;
 
-        /* Direct Kinematics colputation of __pe__ and __Re__ */
-        void direct_kinematics(Vector6d q);
-
     private: 
         /* DH params of UR5 */
         Vector6d a, d, alfa;
+
+        /* Direct Kinematics colputation of __pe__ and __Re__ */
+        void direct_kinematics(Vector6d q);
 
         /* Compute the transformation matrix from i to i-1 */
         Eigen::Matrix4d generate_transformation_matrix(double a, double alfa, double d, double theta);
