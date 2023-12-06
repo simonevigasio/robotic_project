@@ -9,6 +9,7 @@
 #include "sensor_msgs/JointState.h"
 #include "std_msgs/Float64MultiArray.h" 
 
+UR5_t UR5;
 
 void callback(const sensor_msgs::JointState msg) 
 {
@@ -20,12 +21,14 @@ void callback(const sensor_msgs::JointState msg)
     std::cout << "qe = " << std::endl << q << std::endl;
 
     /* arm theta angles => the arrangement of the theta angles are given by the subscriber information sequence */
-    Vector6d arm_q(q(4), q(3), q(0), q(5), q(6), q(7));
+    Vector6d q_arm(q(4), q(3), q(0), q(5), q(6), q(7));
 
     /* Compute the direct kinematics */
-    UR5_t UR5(arm_q);
+    UR5.update_q(q_arm);
+    UR5.init_geometric_jacobian(UR5.__q__);
     std::cout << "pe = " << std::endl << UR5.__pe__ << std::endl;
     std::cout << "Re = " << std::endl << UR5.__Re__ << std::endl;
+    std::cout << "J = " << std::endl << UR5.__GeometricJacobian__ << std::endl;
 }
 
 int main(int argc, char **argv)
@@ -40,7 +43,7 @@ int main(int argc, char **argv)
 
     while (ros::ok()) {
         std_msgs::Float64MultiArray jointCommand;
-        jointCommand.data = {-1.32, -2.78, -0.1, -0.63, -0.57, 2.49, 0.55, 0.3};  // Set your desired joint positions
+        jointCommand.data = {-0.32,-0.78, -2.56,-1.63, -1.57, 3.49, 10, 10};  // Set your desired joint positions
 
         pub.publish(jointCommand);
         ros::spinOnce();
