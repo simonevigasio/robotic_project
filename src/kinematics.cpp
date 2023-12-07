@@ -9,7 +9,7 @@
 UR5::UR5(ros::NodeHandle nh) 
 {
     /* default angles setup */
-    __q__ << 0.0, 0.0, 0.0, 0.0, 0.0, 0.0;
+    __q__ <<  -0.32,-0.78, -2.56,-1.63, -1.57, 3.49;
 
      /* set DH params */
     init_params();
@@ -174,6 +174,8 @@ void UR5::compute_geometric_jacobian()
     __geometric_jacobian__.col(3) = J4;
     __geometric_jacobian__.col(4) = J5;
     __geometric_jacobian__.col(5) = J6;
+
+    __inverse_geometric_jacobian__ = __geometric_jacobian__.inverse();
 }
 
 /* given arotation matrix this function returns its respective unique quaternion */
@@ -214,14 +216,12 @@ void UR5::motion_plan(Eigen::Vector3d final_point, Eigen::Matrix3d final_rotatio
     /* max time of the motion */
     const double max_time = 100;
 
-    /* computer the inverse geometric jacobain */
-    Eigen::Matrix<double, 6, 6> inverse_geometric_jacobian = __geometric_jacobian__.inverse(); 
-
     /* compute the next desired position of the end_effector in the trajectory */
     auto get_desired_cartesion_position = [&] (double time)
     {
         /* x(t) = x_i*t + (1 - t)*x_f */
         Eigen::Vector3d position_in_time_time = time*final_position+(1-time)*initial_position;
+        std::cout << "position_in_time_time = " << std::endl << position_in_time_time << std::endl;
         return position_in_time_time; 
     };
 
@@ -230,6 +230,7 @@ void UR5::motion_plan(Eigen::Vector3d final_point, Eigen::Matrix3d final_rotatio
     {
         /* slerp function computation */
         Eigen::Quaterniond desired_quaternion = initial_quaternion.slerp(time, final_quaternion);
+        std::cout << "desired_quaternion = " << std::endl << desired_quaternion << std::endl;
         return desired_quaternion; 
     };
 
@@ -271,7 +272,7 @@ void UR5::motion_plan(Eigen::Vector3d final_point, Eigen::Matrix3d final_rotatio
         jacobin_input << cartesian_input, quaternion_input;
 
         Eigen::VectorXd joints_velocity(6); 
-        joints_velocity = inverse_geometric_jacobian*jacobin_input;
+        joints_velocity = __inverse_geometric_jacobian__*jacobin_input;
         return joints_velocity; 
     };
 

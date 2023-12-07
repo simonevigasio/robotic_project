@@ -31,6 +31,9 @@ class UR5
         /* jacobian */
         Eigen::Matrix<double, 6, 6> __geometric_jacobian__;
 
+        /* inverse jacobian */
+        Eigen::Matrix<double, 6, 6> __inverse_geometric_jacobian__;
+
         /* motion function */
         void motion_plan(Eigen::Vector3d final_point, Eigen::Matrix3d final_rotation_matrix);
 
