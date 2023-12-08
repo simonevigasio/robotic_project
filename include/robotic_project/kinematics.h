@@ -41,8 +41,9 @@ class UR5
         /* DH params of UR5 */
         Vector6d a, d, alpha;
 
-        /* ROS publisher */
+        /* ROS  */
         ros::Publisher pub;
+        ros::Subscriber sub;
 
         /* init ROS evairoment */
         void init_ROS(ros::NodeHandle nh);
@@ -65,8 +66,33 @@ class UR5
         /* Compute the transformation matrix from i to i-1 */
         Eigen::Matrix4d generate_transformation_matrix(double a, double alfa, double d, double theta);
 
-        /* given arotation matrix this function returns its respective unique quaternion */
+
+        // new functs
+
+        bool __set_initial_q__ = false;
+
+        const double __delta_time__= 0.25;
+
+        Eigen::Vector3d __initial_position__;
+        Eigen::Vector3d __final_position__;
+
+        Eigen::Quaterniond __initial_quaternion__;
+        Eigen::Quaterniond __final_quaternion__;
+
+        Eigen::Matrix3d __Kq__;
+        Eigen::Matrix3d __Kp__;
+
+
         Eigen::Quaterniond from_rotational_matrix_to_quaternion(Eigen::Matrix3d rotationMatrix);
+        Eigen::Vector3d compute_desired_cartesian_position(double normalized_time);
+        Eigen::Quaterniond compute_desired_quaternion(double normalized_time);
+        Eigen::Vector3d calculate_angular_velocity(double normalized_time);
+        Eigen::Vector3d calculate_cartesian_position_velocity(double normalized_time);
+        Eigen::Quaterniond compute_quaternion_error(double normalized_time);
+        Eigen::Vector3d compute_cartesian_position_error(double normalized_time);
+        Eigen::VectorXd joints_velocity_calculation(double normalized_time);
+        Eigen::VectorXd calculate_next_joints(double normalized_time);    
+        double time_normalization(double time, double max_time);
 };
 
 #endif

@@ -40,7 +40,7 @@ UR5::UR5(Vector6d q, ros::NodeHandle nh)
 void UR5::init_ROS(ros::NodeHandle nh)
 {
     /* initialize the subscriber */
-    nh.subscribe("/ur5/joint_states", 10, &UR5::update_q, this);
+    sub = nh.subscribe("/ur5/joint_states", 1, &UR5::update_q, this);
 
     /* initialize the publisher */
     pub = nh.advertise<std_msgs::Float64MultiArray>("/ur5/joint_group_pos_controller/command", 10);
@@ -77,6 +77,8 @@ void UR5::update_q(const sensor_msgs::JointState msg)
 
     /* update new position */
     update_position();
+
+    // try this way
 }
 
 /* direct Kinematic computation */
@@ -178,11 +180,72 @@ void UR5::compute_geometric_jacobian()
     __inverse_geometric_jacobian__ = __geometric_jacobian__.inverse();
 }
 
-/* given arotation matrix this function returns its respective unique quaternion */
 Eigen::Quaterniond UR5::from_rotational_matrix_to_quaternion(Eigen::Matrix3d rotation_matrix)
 {
     Eigen::Quaterniond quaternion(rotation_matrix);
 	return quaternion;
+}
+
+Eigen::Vector3d UR5::compute_desired_cartesian_position(double normalized_time)
+{
+    Eigen::Vector3d desired_cartesian_position = normalized_time*__final_position__+(1-normalized_time)*__initial_position__;
+    return desired_cartesian_position; 
+}
+
+Eigen::Quaterniond UR5::compute_desired_quaternion(double normalized_time)
+{
+    Eigen::Quaterniond desired_quaternion = __initial_quaternion__.slerp(normalized_time, __final_quaternion__);
+    return desired_quaternion; 
+}
+
+Eigen::Vector3d UR5::calculate_angular_velocity(double normalized_time)
+{
+    Eigen::Quaterniond quaternion_velocity = (compute_desired_quaternion(normalized_time+__delta_time__)*compute_desired_quaternion(normalized_time).conjugate()); 
+    Eigen::Vector3d angular_velocity = (quaternion_velocity.vec()*2)/__delta_time__;
+    return angular_velocity; 
+}
+
+Eigen::Vector3d UR5::calculate_cartesian_position_velocity(double normalized_time) 
+{
+    Eigen::Vector3d velocita_end_effector_cartesiana = (compute_desired_cartesian_position(normalized_time)-compute_desired_cartesian_position(normalized_time-__delta_time__))/__delta_time__; 
+    return velocita_end_effector_cartesiana; 
+}
+
+Eigen::Quaterniond UR5::compute_quaternion_error(double normalized_time)
+{
+    Eigen::Quaterniond quaternion_error = compute_desired_quaternion(normalized_time)*from_rotational_matrix_to_quaternion(__Re__).conjugate(); 
+    return quaternion_error; 
+}
+
+Eigen::Vector3d UR5::compute_cartesian_position_error(double normalized_time)
+{
+    Eigen::Vector3d cartesian_position_error = compute_desired_cartesian_position(normalized_time)-__pe__; 
+    return cartesian_position_error; 
+}
+
+Eigen::VectorXd UR5::joints_velocity_calculation(double normalized_time) 
+{
+    Eigen::Vector3d cartesian_input = calculate_cartesian_position_velocity(normalized_time)+__Kp__*compute_cartesian_position_error(normalized_time); 
+    Eigen::Vector3d quaternion_input = calculate_angular_velocity(normalized_time)+__Kq__*(compute_quaternion_error(normalized_time)).vec(); 
+    Eigen::VectorXd jacobin_input(6); 
+    jacobin_input << cartesian_input, quaternion_input;
+
+    Eigen::VectorXd joints_velocity(6); 
+    joints_velocity = __inverse_geometric_jacobian__*jacobin_input;
+    return joints_velocity; 
+}
+
+/* compute the next joint position */
+Eigen::VectorXd UR5::calculate_next_joints(double normalized_time)
+{
+    Eigen::VectorXd next_joints = __q__+joints_velocity_calculation(normalized_time)*__delta_time__; 
+    return next_joints; 
+}
+
+double UR5::time_normalization(double time, double max_time) 
+{
+    double normalizedTime = time/max_time;
+    return normalizedTime;
 }
 
 /* motion function */
@@ -193,117 +256,35 @@ void UR5::motion_plan(Eigen::Vector3d final_point, Eigen::Matrix3d final_rotatio
     std_msgs::Float64MultiArray jointCommand;
 
     /* define Kp and Kq */
-    Eigen::Matrix3d Kq = Eigen::Matrix3d::Identity()*10; 
-    std::cout << "Kq = " << std::endl << Kq << std::endl;
-    Eigen::Matrix3d Kp = Eigen::Matrix3d::Identity()*10; 
-    std::cout << "Kp = " << std::endl << Kq << std::endl;
+    __Kq__ = Eigen::Matrix3d::Identity()*10; 
+    __Kp__ = Eigen::Matrix3d::Identity()*10; 
 
     /* initialize the initial and final quaternian of the trajectory */
-    Eigen::Quaterniond initial_quaternion = from_rotational_matrix_to_quaternion(__Re__); 
-    std::cout << "initial_quaternion = " << std::endl << initial_quaternion << std::endl;
-    Eigen::Quaterniond final_quaternion = from_rotational_matrix_to_quaternion(final_rotation_matrix); 
-    std::cout << "final_quaternion = " << std::endl << final_quaternion << std::endl;
+    __initial_quaternion__ = from_rotational_matrix_to_quaternion(__Re__); 
+    __final_quaternion__ = from_rotational_matrix_to_quaternion(final_rotation_matrix); 
 
     /* initialize the initial and final position of the trajectory */
-    Eigen::Vector3d initial_position = __pe__; 
-    std::cout << "initial_position = " << std::endl << initial_position << std::endl;
-    Eigen::Vector3d final_position = final_point; 
-    std::cout << "final_position = " << std::endl << final_position << std::endl;
-
-    /* initialize the computetion frame for each step */
-    const double delta_time = 0.05;
+    __initial_position__ = __pe__; 
+    __final_position__ = final_point; 
 
     /* max time of the motion */
     const double max_time = 100;
 
-    /* compute the next desired position of the end_effector in the trajectory */
-    auto get_desired_cartesion_position = [&] (double time)
-    {
-        /* x(t) = x_i*t + (1 - t)*x_f */
-        Eigen::Vector3d position_in_time_time = time*final_position+(1-time)*initial_position;
-        std::cout << "position_in_time_time = " << std::endl << position_in_time_time << std::endl;
-        return position_in_time_time; 
-    };
-
-    /* compute the next desired quaternion of the trajectory according to slerp function */
-    auto get_desired_quaternion = [&] (double time) 
-    {
-        /* slerp function computation */
-        Eigen::Quaterniond desired_quaternion = initial_quaternion.slerp(time, final_quaternion);
-        std::cout << "desired_quaternion = " << std::endl << desired_quaternion << std::endl;
-        return desired_quaternion; 
-    };
-
-    /* compute the angular velocity according to the trajectory to follow */
-    auto calculate_angular_velocity = [&] (double time) 
-    {
-        Eigen::Quaterniond quaternion_velocity = (get_desired_quaternion(time+delta_time)*get_desired_quaternion(time).conjugate()); 
-        Eigen::Vector3d angular_velocity = (quaternion_velocity.vec()*2)/delta_time;
-        return angular_velocity; 
-    };
-
-    /* compute the velocity according to the trajectory to follow */
-    auto cartesian_velocity_desired = [&] (double time) 
-    {
-        Eigen::Vector3d velocita_end_effector_cartesiana = (get_desired_cartesion_position(time)-get_desired_cartesion_position(time-delta_time))/delta_time; 
-        return velocita_end_effector_cartesiana; 
-    };
-
-    /* compute the rotational error expressed in quaternion */
-    auto compute_quaternion_error = [&] (double time) 
-    {
-        Eigen::Quaterniond quaternion_error = get_desired_quaternion(time)*from_rotational_matrix_to_quaternion(__Re__).conjugate(); 
-        return quaternion_error; 
-    };
-
-    /* compute the cartesion position error respect to the trajectory */
-    auto compute_cartesian_position_error = [&] (double time) 
-    {
-        Eigen::Vector3d cartesian_position_error = get_desired_cartesion_position(time)-__pe__; 
-        return cartesian_position_error; 
-    };
-
-    /* compute the joints velocities  */
-    auto joints_velocity_calculation = [&] (double time) 
-    {
-        Eigen::Vector3d cartesian_input = cartesian_velocity_desired(time)+Kp*compute_cartesian_position_error(time); 
-        Eigen::Vector3d quaternion_input = calculate_angular_velocity(time)+Kq*(compute_quaternion_error(time)).vec(); 
-        Eigen::VectorXd jacobin_input(6); 
-        jacobin_input << cartesian_input, quaternion_input;
-
-        Eigen::VectorXd joints_velocity(6); 
-        joints_velocity = __inverse_geometric_jacobian__*jacobin_input;
-        return joints_velocity; 
-    };
-
-    /* compute the next joint position */
-    auto calculate_next_joints = [&] (double tempo)
-    {
-        Eigen::VectorXd next_joints = __q__+joints_velocity_calculation(tempo)*delta_time; 
-        return next_joints; 
-    };
-
-    /* normalization of the time respect to the max_time */
-    auto time_normalization = [&] (double time) 
-    {
-        double normalizedTime = time / max_time;
-        return normalizedTime;
-    };
+    /* normalization time init */
+    double t = 0;
 
     /* start the movemt */
     while (ros::ok()) 
     {
-        /* normalization time init */
-        double t = 0;
-
+        std::cout << "t = " << t << std::endl;
         /* next joints to approach */
         Eigen::VectorXd next_joints;
         if (t <= max_time)
         {
-            double t_normalizzato = time_normalization(t);
+            double t_normalizzato = time_normalization(t, max_time);
             next_joints = calculate_next_joints(t_normalizzato);
             jointCommand.data = {next_joints(0), next_joints(1), next_joints(2), next_joints(3), next_joints(4), next_joints(5), 0.0, 0.0};
-            t += delta_time;
+            t += __delta_time__;
         }
         else 
         {

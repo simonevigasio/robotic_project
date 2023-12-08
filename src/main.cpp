@@ -14,7 +14,7 @@ int main(int argc, char **argv)
     ros::init(argc, argv, "ur5_joint_position_publisher");
     ros::NodeHandle nh;
 
-    Eigen::Vector3d P(-6.0, -4.5, 1.0);
+    Eigen::Vector3d P(0.7, -0.28, 0.62);
     Eigen::Matrix3d R {
         {1.0, 0.0, 0.0},
         {0.0, 1.0, 0.0},
