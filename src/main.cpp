@@ -1,28 +1,26 @@
-/* My lib */
+// Header
 #include "robotic_project/kinematics.h"
+
+// Eigen
 #include "Eigen/Dense"
+
+// Standard
 #include <iostream>
 #include <cmath>
 
-/* ROS lib */
+// ROS
 #include "ros/ros.h"
 #include "sensor_msgs/JointState.h"
 #include "std_msgs/Float64MultiArray.h" 
 
 int main(int argc, char **argv)
 {
+    // ROS init
     ros::init(argc, argv, "ur5_joint_position_publisher");
-    ros::NodeHandle nh;
 
-    Eigen::Vector3d P(0.7, -0.28, 0.62);
-    Eigen::Matrix3d R {
-        {1.0, 0.0, 0.0},
-        {0.0, 1.0, 0.0},
-        {0.0, 0.0, 1.0}
-    };
+    // UR5 movement 
+    UR5 UR5obj;   
 
-    UR5 myUR5(nh);
-    myUR5.motion_plan(P, R);
-
+    // ROS spin
     ros::spin();
 }
