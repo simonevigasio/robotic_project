@@ -10,16 +10,50 @@
 
 // ROS
 #include "ros/ros.h"
-#include "sensor_msgs/JointState.h"
-#include "std_msgs/Float64MultiArray.h" 
+#include "std_msgs/Float64MultiArray.h"
 
 int main(int argc, char **argv)
 {
     // ROS init
     ros::init(argc, argv, "ur5_joint_position_publisher");
 
-    // UR5 movement 
-    UR5 UR5obj;   
+    ros::NodeHandle nh;
+    ros::Publisher pub = nh.advertise<std_msgs::Float64MultiArray>("/ur5/joint_group_pos_controller/command", 10);
+
+    Vector6d q;
+
+    try 
+    {
+        q = read_q();
+    }
+    catch(...)
+    {
+        std::cout << "exception accured" << std::endl;
+    }
+
+    Eigen::Matrix4d initial_transormation_matrix = direct_kinematics(q);
+    Eigen::Vector3d initial_point = initial_transormation_matrix.block<3,1>(0,3);
+    Eigen::Quaterniond initial_quaternion(initial_transormation_matrix.block<3,3>(0,0));
+
+    Eigen::Vector3d final_point(0.5, -0.19, -1.1);
+    Eigen::Vector3d final_euler_angles(M_PI/3, M_PI/2-0.1, M_PI/3); 
+    Eigen::Matrix3d final_rotation_matrix = from_euler_angles_to_rotation_matrix(final_euler_angles);
+    Eigen::Quaterniond final_quaternion(final_rotation_matrix);
+
+    Eigen::Matrix<double, 6, Eigen::Dynamic> trajectoty = inverse_differential_kinematics_with_quaternions(q, initial_point, initial_quaternion, final_point, final_quaternion);
+
+    ros::Rate loop_rate(125);
+
+    for (int i=0; i<trajectoty.cols(); ++i)
+    {
+        Vector6d move = trajectoty.block<6,1>(0,i); 
+        std_msgs::Float64MultiArray msg;
+        msg.data.clear();
+        msg.data = {move(0), move(1), move(2), move(3), move(4), move(5), 0.0, 0.0};
+        std::cout << move << std::endl;
+        pub.publish(msg);
+        loop_rate.sleep();
+    }
 
     // ROS spin
     ros::spin();

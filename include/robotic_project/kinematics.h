@@ -4,71 +4,42 @@
 // Eigen 
 #include "../src/Eigen/Dense"
 
-// ROS
-#include "std_msgs/Float64MultiArray.h" 
-#include "sensor_msgs/JointState.h"
-#include "ros/ros.h"
-
 // Vector composed by 6 doubles
 typedef Eigen::Matrix<double, 6, 1> Vector6d;
 
-class UR5
-{
-    public: 
-        // Constructor 
-        UR5();
+// Dimensione factor
+const double scalar_factor = 1.0;
 
-    private:
-        // ROS 
-        ros::Publisher __pub;
-        ros::Subscriber __sub;
-        ros::NodeHandle __nh; 
+// Correction parameters 
+Eigen::Matrix3d Kp = Eigen::Matrix3d::Identity()*10; 
+Eigen::Matrix3d Kq = Eigen::Matrix3d::Identity()*10; 
 
-        // Position and rotation matrix 
-        Eigen::Vector3d __pe;
-        Eigen::Matrix3d __Re;
-        
-        // DH parameters
-        Vector6d __a, __d, __alpha, __q;
+// time trajectory parameters
+const double delta_time = 0.1;
+const double duration_trajectory = 10.0;
 
-        // Dimension 
-        const double __scalar_factor = 10.0;
+// Static DH parameters 
+Vector6d a(0.0, -0.425, -0.3922, 0.0, 0.0, 0.0);
+Vector6d d(0.1625, 0.0, 0.0, 0.1333, 0.0997, 0.0996);
+Vector6d alpha(M_PI/2, 0.0, 0.0, M_PI/2, -M_PI/2, 0.0);
 
-        // Geometric Jacobian
-        Eigen::Matrix<double, 6, 6> __geometric_jacobian;
-        Eigen::Matrix<double, 6, 6> __inverse_geometric_jacobian;
-        void compute_geometric_jacobian();
+// Read the q values from the UR5 
+Vector6d read_q();
 
-        // Callback of the subscriber
-        void handle_movement(const sensor_msgs::JointState& msg); 
+// Convertion
+Eigen::Matrix3d from_euler_angles_to_rotation_matrix(Eigen::Vector3d euler_angles);
 
-        // Trajectory parameters for time 
-        bool __init = false;
-        double __time_trajectory;
-        const double __delta_time = 0.05;
-        const double __duration_trajectory = 100.0;
+// Direct Kinematics
+Eigen::Matrix4d generate_transformation_matrix(double a, double alpha, double d, double theta);
+Eigen::Matrix4d direct_kinematics(Vector6d q); 
 
-        // Trajectory parameters for position and rotation
-        Eigen::Vector3d __initial_position;
-        Eigen::Vector3d __final_position;
-        Eigen::Quaterniond __initial_quaternion;
-        Eigen::Quaterniond __final_quaternion;
+// Geometric Jacobian
+Eigen::Matrix<double, 6, 6> my_ur5_geometric_jacobian(Vector6d q);
+Eigen::Matrix<double, 6, 6> ur5_geometric_jacobian(Vector6d q);
 
-        // Trajectory error
-        Eigen::Matrix3d __Kq;
-        Eigen::Matrix3d __Kp;
-
-        // Direct kinematric function 
-        void direct_kinematics();
-
-        // Generate T from i-1 to i given the DH parameters 
-        Eigen::Matrix4d generate_transformation_matrix(double a, double alfa, double d, double theta);
-
-        // Generate the quaternian from the rotation matrix
-        Eigen::Quaterniond from_rotational_matrix_to_quaternion(Eigen::Matrix3d rotationMatrix);
-
-        // Trajectory joints velocity 
-        Eigen::VectorXd joints_velocity(Eigen::Vector3d position_velocity, Eigen::Vector3d position_error, Eigen::Vector3d angular_velocity, Eigen::Quaterniond quaternion_error); 
-};
+// Generate a trajectory 
+Eigen::Vector3d position_function(double t, Eigen::Vector3d initial_position, Eigen::Vector3d final_position);
+Eigen::Quaterniond quaternion_function(double t, Eigen::Quaterniond initial_quaternian, Eigen::Quaterniond final_quaternian);
+Eigen::Matrix<double, 6, Eigen::Dynamic> inverse_differential_kinematics_with_quaternions(Vector6d q, Eigen::Vector3d initial_point, Eigen::Quaterniond initial_quaternion, Eigen::Vector3d final_point, Eigen::Quaterniond final_quaternion);
 
 #endif

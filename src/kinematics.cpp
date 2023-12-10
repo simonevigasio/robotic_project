@@ -2,127 +2,50 @@
 #include "robotic_project/kinematics.h"
 
 // ROS
-#include "std_msgs/Float64MultiArray.h" 
 #include "sensor_msgs/JointState.h"
+#include "boost/shared_ptr.hpp"
 #include "ros/ros.h"
 
 // Eigen 
 #include "Eigen/Dense"
+#include "Eigen/QR"
 
 // Standard 
 #include <iostream>
 #include <cmath>
 
-// Constructor
-UR5::UR5() 
+// Read the q values from the UR5 
+Vector6d read_q()
 {
-    __a << 0.0, -0.425, -0.3922, 0.0, 0.0, 0.0;
-    __d << 0.1625, 0.0, 0.0, 0.1333, 0.0997, 0.0996;
-    __alpha << M_PI/2, 0.0, 0.0, M_PI/2, -M_PI/2, 0.0;
+    // Read the eight q values => six for the arm and two for the gripper
+    boost::shared_ptr<sensor_msgs::JointState const> msg;
+    msg = ros::topic::waitForMessage<sensor_msgs::JointState>("/ur5/joint_states");
 
-    __a *= __scalar_factor;
-    __d *= __scalar_factor;
+    // Controll if the message is received correctly
+    if (msg == NULL) throw; 
 
-    __sub = __nh.subscribe("/ur5/joint_states", 10, &UR5::handle_movement, this);
-    __pub = __nh.advertise<std_msgs::Float64MultiArray>("/ur5/joint_group_pos_controller/command", 10);
-
-    __Kp = Eigen::Matrix3d::Identity()*10; 
-    __Kq = Eigen::Matrix3d::Identity()*-10; 
-
-    __final_quaternion = from_rotational_matrix_to_quaternion(Eigen::Matrix3d::Identity()); 
-    __final_position << 1.5, -1.9, 4.5; std::cout << "final position = " << std::endl << __final_position << std::endl;
+    // Store the information and arrange it properly
+    Eigen::VectorXd q(8); for (int i=0; i<8; ++i) q(i) = msg->position[i];
+    Vector6d arm(q(4), q(3), q(0), q(5), q(6), q(7));
+    return arm;
 }
 
-// Callback of the subscriber
-void UR5::handle_movement(const sensor_msgs::JointState& msg) 
+// Convertion from euler angles to a rotation matrix
+Eigen::Matrix3d from_euler_angles_to_rotation_matrix(Eigen::Vector3d euler_angles)
 {
-    // Get theta angles 
-    Eigen::VectorXd q(8);
-    for (int i=0; i<8; ++i) q(i) = msg.position[i];
-    __q << q(4), q(3), q(0), q(5), q(6), q(7);
+    const double phi = euler_angles(0);
+    const double theta = euler_angles(1);
+    const double gamma = euler_angles(2);
 
-    // Update the position
-    direct_kinematics();
-    compute_geometric_jacobian(); 
-
-    if (!__init)
-    {
-        // Set start of the trajectory and the destination 
-        __time_trajectory = __delta_time;
-        __initial_position = __pe;
-        __initial_quaternion = from_rotational_matrix_to_quaternion(__Re);
-        __init = !__init;
-    }
-    else 
-    {   
-        // Next joint values 
-        std_msgs::Float64MultiArray jointCommand;
-        if (__time_trajectory <= __duration_trajectory-__delta_time && __time_trajectory >= __delta_time)
-        {
-            //std::cout << "current position = " << std::endl << __pe << std::endl;
-
-            // Nomalization of the time trajectory 
-            double nomalized_time = __time_trajectory/__duration_trajectory;
-            double previous_normalized_time = (__time_trajectory-__delta_time)/__duration_trajectory;
-            double next_normalized_time = (__time_trajectory+__delta_time)/__duration_trajectory;
-
-            // Desired position and quaternian
-            Eigen::Vector3d desired_position = nomalized_time*__final_position+(1-nomalized_time)*__initial_position; 
-            //std::cout << "desired position = " << std::endl << desired_position << std::endl;
-            Eigen::Quaterniond desired_quaternion = __initial_quaternion.slerp(nomalized_time, __final_quaternion);
-
-            // Desired previous position 
-            Eigen::Vector3d desired_previous_position = previous_normalized_time*__final_position+(1-previous_normalized_time)*__initial_position; 
-            //std::cout << "desired previous position = " << std::endl << desired_previous_position << std::endl;
-
-            // Desired next quaternian
-            Eigen::Quaterniond desired_next_quaternion = __initial_quaternion.slerp(next_normalized_time, __final_quaternion);
-
-            // End-effector velocity 
-            Eigen::Vector3d end_effector_velocity = (desired_position-desired_previous_position)/__delta_time; 
-            //std::cout << "end effector velocity = " << std::endl << end_effector_velocity << std::endl;
-
-            // Angular velocity
-            Eigen::Vector3d angular_velocity = (__delta_time/2)*(desired_next_quaternion*desired_quaternion.conjugate()).vec();
-
-            // Position error
-            Eigen::Vector3d position_error = desired_position-__pe; 
-            std::cout << "position error = " << std::endl << position_error << std::endl;
-
-            // Quaternion error
-            Eigen::Quaterniond quaternion_error = desired_quaternion*from_rotational_matrix_to_quaternion(__Re).conjugate(); 
-
-            // Next Joints 
-            Eigen::VectorXd next_joints = __q+joints_velocity(end_effector_velocity, position_error, angular_velocity, quaternion_error)*__delta_time;
-            jointCommand.data = {next_joints(0), next_joints(1), next_joints(2), next_joints(3), next_joints(4), next_joints(5), 0.0, 0.0};
-            //std::cout << "next joints = " << std::endl << next_joints << std::endl;
-
-            // Increment time trajectory
-            __time_trajectory += __delta_time; 
-            std::cout << "time = " << std::endl << __time_trajectory << std::endl;
-        }
-        else jointCommand.data = {__q(0), __q(1), __q(2), __q(3), __q(4), __q(5), 0.0, 0.0};
-        __pub.publish(jointCommand);
-    }
-}
-
-// Direct Kinematics 
-void UR5::direct_kinematics() 
-{
-    Eigen::Matrix4d T10 = generate_transformation_matrix(__a(0), __alpha(0), __d(0), __q(0));
-    Eigen::Matrix4d T21 = generate_transformation_matrix(__a(1), __alpha(1), __d(1), __q(1));
-    Eigen::Matrix4d T32 = generate_transformation_matrix(__a(2), __alpha(2), __d(2), __q(2));
-    Eigen::Matrix4d T43 = generate_transformation_matrix(__a(3), __alpha(3), __d(3), __q(3));
-    Eigen::Matrix4d T54 = generate_transformation_matrix(__a(4), __alpha(4), __d(4), __q(4));
-    Eigen::Matrix4d T65 = generate_transformation_matrix(__a(5), __alpha(5), __d(5), __q(5));
-    Eigen::Matrix4d T60 = T10*T21*T32*T43*T54*T65;
-    
-    __pe=T60.block<3,1>(0,3);
-    __Re=T60.block<3,3>(0,0);
+    return Eigen::Matrix3d {
+            {cos(phi)*cos(theta), cos(phi)*sin(theta)*sin(gamma)-sin(phi)*cos(gamma), cos(phi)*sin(theta)*cos(gamma)+sin(phi)*sin(gamma)},
+            {sin(phi)*cos(theta), sin(phi)*sin(theta)*sin(gamma)+cos(phi)*cos(gamma), sin(phi)*sin(theta)*cos(gamma)-cos(phi)*sin(gamma)},
+            {-sin(theta), cos(theta)*sin(gamma), cos(theta)*cos(gamma)}
+    };
 }
 
 // Generate T from i-1 to i given the DH parameters 
-Eigen::Matrix4d UR5::generate_transformation_matrix(double a, double alpha, double d, double theta)
+Eigen::Matrix4d generate_transformation_matrix(double a, double alpha, double d, double theta)
 {
     return Eigen::Matrix4d {
         {cos(theta), -sin(theta)*cos(alpha), sin(theta)*sin(alpha), a*cos(theta)},
@@ -132,93 +55,206 @@ Eigen::Matrix4d UR5::generate_transformation_matrix(double a, double alpha, doub
     };
 }
 
-// Geometric jacobian and inverse
-void UR5::compute_geometric_jacobian()
+// Direct kinematics
+Eigen::Matrix4d direct_kinematics(Vector6d q)
 {
-    Vector6d J1(
-        __d(4)*(cos(__q(0))*cos(__q(4)) + cos(__q(1) + __q(2) + __q(3))*sin(__q(0))*sin(__q(4))) + __d(3)*cos(__q(0)) - __a(1)*cos(__q(1))*sin(__q(0)) - __d(4)*sin(__q(1) + __q(2) + __q(3))*sin(__q(0)) - __a(2)*cos(__q(1))*cos(__q(2))*sin(__q(0)) + __a(2)*sin(__q(0))*sin(__q(1))*sin(__q(2)),
-        __d(4)*(cos(__q(4))*sin(__q(0)) - cos(__q(1) + __q(2) + __q(3))*cos(__q(0))*sin(__q(4))) + __d(3)*sin(__q(0)) + __a(1)*cos(__q(0))*cos(__q(1)) + __d(4)*sin(__q(1) + __q(2) + __q(3))*cos(__q(0)) + __a(2)*cos(__q(0))*cos(__q(1))*cos(__q(2)) - __a(2)*cos(__q(0))*sin(__q(1))*sin(__q(2)),
+    a *= scalar_factor;
+    d *= scalar_factor;
+
+    Eigen::Matrix4d T10 = generate_transformation_matrix(a(0), alpha(0), d(0), q(0));
+    Eigen::Matrix4d T21 = generate_transformation_matrix(a(1), alpha(1), d(1), q(1));
+    Eigen::Matrix4d T32 = generate_transformation_matrix(a(2), alpha(2), d(2), q(2));
+    Eigen::Matrix4d T43 = generate_transformation_matrix(a(3), alpha(3), d(3), q(3));
+    Eigen::Matrix4d T54 = generate_transformation_matrix(a(4), alpha(4), d(4), q(4));
+    Eigen::Matrix4d T65 = generate_transformation_matrix(a(5), alpha(5), d(5), q(5));
+    Eigen::Matrix4d T60 = T10*T21*T32*T43*T54*T65;
+    return T60;
+}
+
+// Geometric jacobian
+Eigen::Matrix<double, 6, 6> my_ur5_geometric_jacobian(Vector6d q)
+{
+    a *= scalar_factor;
+    d *= scalar_factor;
+
+    Eigen::Vector3d P00(0.0, 0.0, 0.0);
+    Eigen::Vector3d z00(0.0, 0.0, 1.0);
+
+    Eigen::Matrix4d T10 = generate_transformation_matrix(a(0), alpha(0), d(0), q(0));
+    Eigen::Matrix3d R10 = T10.block<3,3>(0,0);
+    Eigen::Vector3d P10 = T10.block<3,1>(0,3);
+    Eigen::Vector3d z10 = R10*z00;
+
+    Eigen::Matrix4d T21 = generate_transformation_matrix(a(1), alpha(1), d(1), q(1));
+    Eigen::Matrix4d T20 = T21*T10;
+    Eigen::Matrix3d R20 = T20.block<3,3>(0,0);
+    Eigen::Vector3d P20 = T20.block<3,1>(0,3);
+    Eigen::Vector3d z20 = R20*z00;
+
+    Eigen::Matrix4d T32 = generate_transformation_matrix(a(2), alpha(2), d(2), q(2));
+    Eigen::Matrix4d T30 = T32*T20;
+    Eigen::Matrix3d R30 = T30.block<3,3>(0,0);
+    Eigen::Vector3d P30 = T30.block<3,1>(0,3);
+    Eigen::Vector3d z30 = R30*z00;
+
+    Eigen::Matrix4d T43 = generate_transformation_matrix(a(3), alpha(3), d(3), q(3));
+    Eigen::Matrix4d T40 = T43*T30;
+    Eigen::Matrix3d R40 = T40.block<3,3>(0,0);
+    Eigen::Vector3d P40 = T40.block<3,1>(0,3);
+    Eigen::Vector3d z40 = R40*z00;
+
+    Eigen::Matrix4d T54 = generate_transformation_matrix(a(4), alpha(4), d(4), q(4));
+    Eigen::Matrix4d T50 = T54*T50;
+    Eigen::Matrix3d R50 = T50.block<3,3>(0,0);
+    Eigen::Vector3d P50 = T50.block<3,1>(0,3);
+    Eigen::Vector3d z50 = R50*z00;
+
+    Eigen::Matrix4d T65 = generate_transformation_matrix(a(5), alpha(5), d(5), q(5));
+    Eigen::Matrix4d T60 = T65*T50;
+    Eigen::Vector3d P60 = T60.block<3,1>(0,3);
+
+    Vector6d J0; J0 << z00.cross(P60-P00), z00;
+    Vector6d J1; J1 << z10.cross(P60-P10), z10;
+    Vector6d J2; J2 << z20.cross(P60-P20), z20;
+    Vector6d J3; J3 << z30.cross(P60-P30), z30;
+    Vector6d J4; J4 << z40.cross(P60-P40), z40;
+    Vector6d J5; J5 << z50.cross(P60-P50), z50;
+
+    Eigen::Matrix<double, 6, 6> geometric_jacobain;
+    geometric_jacobain.col(0) = J0;
+    geometric_jacobain.col(1) = J1;
+    geometric_jacobain.col(2) = J2;
+    geometric_jacobain.col(3) = J3;
+    geometric_jacobain.col(4) = J4;
+    geometric_jacobain.col(5) = J5;
+    return geometric_jacobain;
+}
+
+Eigen::Matrix<double, 6, 6> ur5_geometric_jacobian(Vector6d q)
+{
+    a *= scalar_factor;
+    d *= scalar_factor;
+
+    Vector6d J0(
+        d(4)*(cos(q(0))*cos(q(4)) + cos(q(1) + q(2) + q(3))*sin(q(0))*sin(q(4))) + d(3)*cos(q(0)) - a(1)*cos(q(1))*sin(q(0)) - d(4)*sin(q(1) + q(2) + q(3))*sin(q(0)) - a(2)*cos(q(1))*cos(q(2))*sin(q(0)) + a(2)*sin(q(0))*sin(q(1))*sin(q(2)),
+        d(4)*(cos(q(4))*sin(q(0)) - cos(q(1) + q(2) + q(3))*cos(q(0))*sin(q(4))) + d(3)*sin(q(0)) + a(1)*cos(q(0))*cos(q(1)) + d(4)*sin(q(1) + q(2) + q(3))*cos(q(0)) + a(2)*cos(q(0))*cos(q(1))*cos(q(2)) - a(2)*cos(q(0))*sin(q(1))*sin(q(2)),
         0,
         0,
         0,
         1
     );
 
+    Vector6d J1(
+        -cos(q(0))*(a(2)*sin(q(1) + q(2)) + a(1)*sin(q(1)) + d(4)*(sin(q(1) + q(2))*sin(q(3)) - cos(q(1) + q(2))*cos(q(3))) - d(4)*sin(q(4))*(cos(q(1) + q(2))*sin(q(3)) + sin(q(1) + q(2))*cos(q(3)))),
+        -sin(q(0))*(a(2)*sin(q(1) + q(2)) + a(1)*sin(q(1)) + d(4)*(sin(q(1) + q(2))*sin(q(3)) - cos(q(1) + q(2))*cos(q(3))) - d(4)*sin(q(4))*(cos(q(1) + q(2))*sin(q(3)) + sin(q(1) + q(2))*cos(q(3)))),
+        a(2)*cos(q(1) + q(2)) - (d(4)*sin(q(1) + q(2) + q(3) + q(4)))/2 + a(1)*cos(q(1)) + (d(4)*sin(q(1) + q(2) + q(3) - q(4)))/2 + d(4)*sin(q(1) + q(2) + q(3)),
+        sin(q(0)),
+        -cos(q(0)),
+        0
+    );
+
     Vector6d J2(
-        -cos(__q(0))*(__a(2)*sin(__q(1) + __q(2)) + __a(1)*sin(__q(1)) + __d(4)*(sin(__q(1) + __q(2))*sin(__q(3)) - cos(__q(1) + __q(2))*cos(__q(3))) - __d(4)*sin(__q(4))*(cos(__q(1) + __q(2))*sin(__q(3)) + sin(__q(1) + __q(2))*cos(__q(3)))),
-        -sin(__q(0))*(__a(2)*sin(__q(1) + __q(2)) + __a(1)*sin(__q(1)) + __d(4)*(sin(__q(1) + __q(2))*sin(__q(3)) - cos(__q(1) + __q(2))*cos(__q(3))) - __d(4)*sin(__q(4))*(cos(__q(1) + __q(2))*sin(__q(3)) + sin(__q(1) + __q(2))*cos(__q(3)))),
-        __a(2)*cos(__q(1) + __q(2)) - (__d(4)*sin(__q(1) + __q(2) + __q(3) + __q(4)))/2 + __a(1)*cos(__q(1)) + (__d(4)*sin(__q(1) + __q(2) + __q(3) - __q(4)))/2 + __d(4)*sin(__q(1) + __q(2) + __q(3)),
-        sin(__q(0)),
-        -cos(__q(0)),
+        -cos(q(0))*(a(2)*sin(q(1) + q(2)) + a(1)*sin(q(1)) + d(4)*(sin(q(1) + q(2))*sin(q(3)) - cos(q(1) + q(2))*cos(q(3))) - d(4)*sin(q(4))*(cos(q(1) + q(2))*sin(q(3)) + sin(q(1) + q(2))*cos(q(3)))),
+        -sin(q(0))*(a(2)*sin(q(1) + q(2)) + a(1)*sin(q(1)) + d(4)*(sin(q(1) + q(2))*sin(q(3)) - cos(q(1) + q(2))*cos(q(3))) - d(4)*sin(q(4))*(cos(q(1) + q(2))*sin(q(3)) + sin(q(1) + q(2))*cos(q(3)))),
+        a(2)*cos(q(1) + q(2)) - (d(4)*sin(q(1) + q(2) + q(3) + q(4)))/2 + a(1)*cos(q(1)) + (d(4)*sin(q(1) + q(2) + q(3) - q(4)))/2 + d(4)*sin(q(1) + q(2) + q(3)),
+        sin(q(0)),
+        -cos(q(0)),
         0
     );
 
     Vector6d J3(
-        cos(__q(0))*(__d(4)*cos(__q(1) + __q(2) + __q(3)) - __a(2)*sin(__q(1) + __q(2)) + __d(4)*sin(__q(1) + __q(2) + __q(3))*sin(__q(4))),
-        sin(__q(0))*(__d(4)*cos(__q(1) + __q(2) + __q(3)) - __a(2)*sin(__q(1) + __q(2)) + __d(4)*sin(__q(1) + __q(2) + __q(3))*sin(__q(4))),
-        __a(2)*cos(__q(1) + __q(2)) - (__d(4)*sin(__q(1) + __q(2) + __q(3) + __q(4)))/2 + (__d(4)*sin(__q(1) + __q(2) + __q(3) - __q(4)))/2 + __d(4)*sin(__q(1) + __q(2) + __q(3)),
-        sin(__q(0)),
-        -cos(__q(0)),
+        d(4)*cos(q(0))*(cos(q(1) + q(2) + q(3)) + sin(q(1) + q(2) + q(3))*sin(q(4))),
+        d(4)*sin(q(0))*(cos(q(1) + q(2) + q(3)) + sin(q(1) + q(2) + q(3))*sin(q(4))),
+        d(4)*(sin(q(1) + q(2) + q(3) - q(4))/2 + sin(q(1) + q(2) + q(3)) - sin(q(1) + q(2) + q(3) + q(4))/2),
+        sin(q(0)),
+        -cos(q(0)),
         0
     );
 
     Vector6d J4(
-        __d(4)*cos(__q(0))*(cos(__q(1) + __q(2) + __q(3)) + sin(__q(1) + __q(2) + __q(3))*sin(__q(4))),
-        __d(4)*sin(__q(0))*(cos(__q(1) + __q(2) + __q(3)) + sin(__q(1) + __q(2) + __q(3))*sin(__q(4))),
-        __d(4)*(sin(__q(1) + __q(2) + __q(3) - __q(4))/2 + sin(__q(1) + __q(2) + __q(3)) - sin(__q(1) + __q(2) + __q(3) + __q(4))/2),
-        sin(__q(0)),
-        -cos(__q(0)),
-        0
+        d(4)*cos(q(0))*cos(q(1))*cos(q(4))*sin(q(2))*sin(q(3)) - d(4)*cos(q(0))*cos(q(1))*cos(q(2))*cos(q(3))*cos(q(4)) - d(4)*sin(q(0))*sin(q(4)) + d(4)*cos(q(0))*cos(q(2))*cos(q(4))*sin(q(1))*sin(q(3)) + d(4)*cos(q(0))*cos(q(3))*cos(q(4))*sin(q(1))*sin(q(2)),
+        d(4)*cos(q(0))*sin(q(4)) + d(4)*cos(q(1))*cos(q(4))*sin(q(0))*sin(q(2))*sin(q(3)) + d(4)*cos(q(2))*cos(q(4))*sin(q(0))*sin(q(1))*sin(q(3)) + d(4)*cos(q(3))*cos(q(4))*sin(q(0))*sin(q(1))*sin(q(2)) - d(4)*cos(q(1))*cos(q(2))*cos(q(3))*cos(q(4))*sin(q(0)),
+        -d(4)*(sin(q(1) + q(2) + q(3) - q(4))/2 + sin(q(1) + q(2) + q(3) + q(4))/2),
+        sin(q(1) + q(2) + q(3))*cos(q(0)),
+        sin(q(1) + q(2) + q(3))*sin(q(0)),
+        -cos(q(1) + q(2) + q(3))
     );
 
     Vector6d J5(
-        __d(4)*cos(__q(0))*cos(__q(1))*cos(__q(4))*sin(__q(2))*sin(__q(3)) - __d(4)*cos(__q(0))*cos(__q(1))*cos(__q(2))*cos(__q(3))*cos(__q(4)) - __d(4)*sin(__q(0))*sin(__q(4)) + __d(4)*cos(__q(0))*cos(__q(2))*cos(__q(4))*sin(__q(1))*sin(__q(3)) + __d(4)*cos(__q(0))*cos(__q(3))*cos(__q(4))*sin(__q(1))*sin(__q(2)),
-        __d(4)*cos(__q(0))*sin(__q(4)) + __d(4)*cos(__q(1))*cos(__q(4))*sin(__q(0))*sin(__q(2))*sin(__q(3)) + __d(4)*cos(__q(2))*cos(__q(4))*sin(__q(0))*sin(__q(1))*sin(__q(3)) + __d(4)*cos(__q(3))*cos(__q(4))*sin(__q(0))*sin(__q(1))*sin(__q(2)) - __d(4)*cos(__q(1))*cos(__q(2))*cos(__q(3))*cos(__q(4))*sin(__q(0)),
-        -__d(4)*(sin(__q(1) + __q(2) + __q(3) - __q(4))/2 + sin(__q(1) + __q(2) + __q(3) + __q(4))/2),
-        sin(__q(1) + __q(2) + __q(3))*cos(__q(0)),
-        sin(__q(1) + __q(2) + __q(3))*sin(__q(0)),
-        -cos(__q(1) + __q(2) + __q(3))
+        0,
+        0,
+        0,
+        cos(q(4))*sin(q(0)) - cos(q(1) + q(2) + q(3))*cos(q(0))*sin(q(4)),
+        -cos(q(0))*cos(q(4)) - cos(q(1) + q(2) + q(3))*sin(q(0))*sin(q(4)),
+        -sin(q(1) + q(2) + q(3))*sin(q(4))   
     );
 
-    Vector6d J6(
-        0,
-        0,
-        0,
-        cos(__q(4))*sin(__q(0)) - cos(__q(1) + __q(2) + __q(3))*cos(__q(0))*sin(__q(4)),
-        -cos(__q(0))*cos(__q(4)) - cos(__q(1) + __q(2) + __q(3))*sin(__q(0))*sin(__q(4)),
-        -sin(__q(1) + __q(2) + __q(3))*sin(__q(4))   
-    );
-
-    __geometric_jacobian.col(0) = J1;
-    __geometric_jacobian.col(1) = J2;
-    __geometric_jacobian.col(2) = J3;
-    __geometric_jacobian.col(3) = J4;
-    __geometric_jacobian.col(4) = J5;
-    __geometric_jacobian.col(5) = J6;
-
-    __inverse_geometric_jacobian = __geometric_jacobian.inverse();
+    Eigen::Matrix<double, 6, 6> geometric_jacobain;
+    geometric_jacobain.col(0) = J0;
+    geometric_jacobain.col(1) = J1;
+    geometric_jacobain.col(2) = J2;
+    geometric_jacobain.col(3) = J3;
+    geometric_jacobain.col(4) = J4;
+    geometric_jacobain.col(5) = J5;
+    return geometric_jacobain;
 }
 
-// Generate the quaternian from the rotation matrix
-Eigen::Quaterniond UR5::from_rotational_matrix_to_quaternion(Eigen::Matrix3d rotation_matrix)
+Eigen::Vector3d position_function(double t, Eigen::Vector3d initial_position, Eigen::Vector3d final_position)
 {
-    Eigen::Quaterniond quaternion(rotation_matrix);
-	return quaternion;
+    double nomalized_t = t/duration_trajectory;
+    if (nomalized_t > 1) return final_position;
+    else return nomalized_t*final_position+(1-nomalized_t)*initial_position;
 }
 
-// Trajectory joints velocity 
-Eigen::VectorXd UR5::joints_velocity(
-    Eigen::Vector3d position_velocity, 
-    Eigen::Vector3d position_error, 
-    Eigen::Vector3d angular_velocity, 
-    Eigen::Quaterniond quaternion_error
-) 
+Eigen::Quaterniond quaternion_function(double t, Eigen::Quaterniond initial_quaternian, Eigen::Quaterniond final_quaternian)
 {
-    Eigen::Vector3d cartesian_input = position_velocity+__Kp*position_error; 
-    Eigen::Vector3d quaternion_input = angular_velocity+__Kq*quaternion_error.vec(); 
-    Eigen::VectorXd jacobin_input(6); jacobin_input << cartesian_input, quaternion_input;
-    Eigen::VectorXd joints_velocity(6); joints_velocity = __inverse_geometric_jacobian*jacobin_input;
-    //std::cout << "inverse jacobian = " << std::endl << __inverse_geometric_jacobian << std::endl;
-    //std::cout << "joints velocity = " << std::endl << joints_velocity << std::endl;
-    return joints_velocity; 
+    double nomalized_t = t/duration_trajectory;
+    if (nomalized_t > 1) return final_quaternian;
+    else return initial_quaternian.slerp(nomalized_t, final_quaternian);
+}
+
+Eigen::Matrix<double, 6, Eigen::Dynamic> inverse_differential_kinematics_with_quaternions(Vector6d q, Eigen::Vector3d initial_point, Eigen::Quaterniond initial_quaternion, Eigen::Vector3d final_point, Eigen::Quaterniond final_quaternion)
+{
+    Vector6d q_step = q;
+    Eigen::Matrix<double, 6, Eigen::Dynamic> trajectory = q_step;
+    Eigen::Matrix4d transformation_matrix_step;
+    Eigen::Vector3d position_step;
+    Eigen::Matrix3d rotation_matrix_step;
+    Eigen::Quaterniond quaternion_step;
+    Eigen::Matrix<double, 6, 6> jacobian_step;
+    Eigen::Matrix<double, 6, 6> inverse_jacobian_step;
+
+    for (double t=delta_time; t<duration_trajectory; t+=delta_time) 
+    {
+        // Current position and quaternion
+        transformation_matrix_step = direct_kinematics(q_step);
+        position_step = transformation_matrix_step.block<3,1>(0,3);
+        rotation_matrix_step = transformation_matrix_step.block<3,3>(0,0);
+        quaternion_step = rotation_matrix_step;
+
+        // Desired velocities 
+        Eigen::Vector3d position_velocity = (position_function(t, initial_point, final_point)-position_function(t-delta_time, initial_point, final_point))/delta_time;
+        Eigen::Quaterniond quaternion_velocity = (quaternion_function(t+delta_time, initial_quaternion, final_quaternion)*quaternion_function(t, initial_quaternion, final_quaternion).conjugate()); 
+	    Eigen::Vector3d angular_velocity = (quaternion_velocity.vec()*2)/delta_time;
+
+        // Jacobian computation
+        jacobian_step = ur5_geometric_jacobian(q_step);
+        inverse_jacobian_step = jacobian_step.completeOrthogonalDecomposition().pseudoInverse();
+        if (abs(jacobian_step.determinant()) < 0.0000001) std::cout << "Near singular configuration" << std::endl;
+
+        // Quaternion error
+        Eigen::Quaterniond quaternion_error = quaternion_function(t, initial_quaternion, final_quaternion)*(quaternion_step.conjugate());
+        
+        // Inverse geometric jacobian input
+        Vector6d input_inverse_jacobian; 
+        input_inverse_jacobian << position_velocity-Kp*(position_function(t, initial_point, final_point)-position_step), angular_velocity-Kq*(quaternion_error.vec());
+
+        // Final computation
+        Vector6d q_derivative = inverse_jacobian_step*input_inverse_jacobian;
+        q_step = q_step+q_derivative*delta_time;
+        trajectory.conservativeResize(6, trajectory.cols()+1);
+        trajectory.col(trajectory.cols()-1) = q_step;
+    }
+
+    return trajectory;
 }
