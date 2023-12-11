@@ -28,6 +28,7 @@ Vector6d read_q()
     Eigen::VectorXd q(8); for (int i=0; i<8; ++i) q(i) = msg->position[i];
     Vector6d arm(q(4), q(3), q(0), q(5), q(6), q(7));
     return arm;
+    // ciao 
 }
 
 // Convertion from euler angles to a rotation matrix
