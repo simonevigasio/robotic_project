@@ -65,12 +65,57 @@ Eigen::Matrix4d generate_transformation_matrix(double a, double alpha, double d,
     };
 }
 
+// Direct Kinematics 2
+Eigen::Matrix4d direct_kinematics_2(Vector6d q)
+{
+    Eigen::Matrix4d T10f {
+            {cos(q(0)) , -sin(q(0)) , 0 , 0},
+            {sin(q(0)) , cos(q(0)) , 0 , 0},
+            {0 , 0 , 1 , d(0)},
+            {0 , 0 , 0 , 1}
+    };
+
+    Eigen::Matrix4d T21f {
+            {cos(q(1)) , -sin(q(1)) , 0 , 0},
+            {0 , 0 , -1 , 0},
+            {sin(q(1)) , cos(q(1)) , 0 , 0},
+            {0 , 0 , 0 , 1}
+    };
+
+    Eigen::Matrix4d T32f {
+            {cos(q(2)) , -sin(q(2)) , 0 , a(1)},
+            {sin(q(2)) , cos(q(2)) , 0 , 0},
+            {0 , 0 , 1 , d(2)},
+            {0 , 0 , 0 , 1}
+    };
+
+    Eigen::Matrix4d T43f {
+            {cos(q(3)) , -sin(q(3)) , 0 , a(2)},
+            {sin(q(3)) , cos(q(3)) , 0 , 0},
+            {0 , 0 , 1 , d(3)},
+            {0 , 0 , 0 , 1}
+    };
+
+    Eigen::Matrix4d T54f {
+            {cos(q(4)) , -sin(q(4)) , 0 , 0},
+            {0 , 0 , -1 , -d(4)},
+            {sin(q(4)) , cos(q(4)) , 0 , 0},
+            {0 , 0 , 0 , 1}
+    };
+
+    Eigen::Matrix4d T65f {
+            {cos(q(5)) , -sin(q(5)) , 0 , 0},
+            {0 , 0 , 1 , d(5)},
+            {-sin(q(5)) , -cos(q(5)) , 0 , 0},
+            {0 , 0 , 0 , 1}
+    };
+
+    return T10f*T21f*T32f*T43f*T54f*T65f;
+}
+
 // Direct kinematics
 Eigen::Matrix4d direct_kinematics(Vector6d q)
 {
-    a *= scalar_factor;
-    d *= scalar_factor;
-
     Eigen::Matrix4d T10 = generate_transformation_matrix(a(0), alpha(0), d(0), q(0));
     Eigen::Matrix4d T21 = generate_transformation_matrix(a(1), alpha(1), d(1), q(1));
     Eigen::Matrix4d T32 = generate_transformation_matrix(a(2), alpha(2), d(2), q(2));
@@ -81,12 +126,232 @@ Eigen::Matrix4d direct_kinematics(Vector6d q)
     return T60;
 }
 
-// Geometric jacobian
-Eigen::Matrix<double, 6, 6> my_ur5_geometric_jacobian(Vector6d q)
+// Inverse kinematics
+Eigen::Matrix<double, 6, 8> inverse_kinematics(Eigen::Vector3d P60, Eigen::Matrix3d R60)
 {
-    a *= scalar_factor;
-    d *= scalar_factor;
+    Eigen::Matrix4d T60 {
+        {R60(0,0), R60(0,1), R60(0,2), P60(0)}, 
+        {R60(1,0), R60(1,1), R60(1,2), P60(1)},
+        {R60(2,0), R60(2,1), R60(2,2), P60(2)},
+        {0, 0, 0, 1}
+    };
 
+    Eigen::Vector4d V {0, 0, -d(5), 1};
+    Eigen::Vector4d P50 = T60*V;
+
+    double psi = atan2(P50(1), P50(0));
+    double distance_P50x_P50y = hypot(P50(1), P50(0));
+
+    if (distance_P50x_P50y < d(3))
+    {
+        ROS_INFO("Position request in the unreachable cylinder");
+        throw;
+    }
+
+    double phi1 = acos(d(3)/distance_P50x_P50y);
+    double phi2 = -phi1;
+
+    // θ1
+    double theta1_1 = psi+phi1+M_PI/2;
+    double theta1_2 = psi+phi2+M_PI/2;
+
+    double p61z_1 = P60(0)*sin(theta1_1)-P60(1)*cos(theta1_1);
+    double p61z_2 = P60(0)*sin(theta1_2)-P60(1)*cos(theta1_2);
+
+    // θ5
+    double theta5_1_1 = acos((p61z_1-d(3))/d(5));
+    double theta5_1_2 = -acos((p61z_1-d(3))/d(5));
+    double theta5_2_1 = acos((p61z_2-d(3))/d(5));
+    double theta5_2_2 = -acos((p61z_2-d(3))/d(5));
+
+    Eigen::Matrix4d T10_1 = generate_transformation_matrix(a(0), alpha(0), d(0), theta1_1);
+    Eigen::Matrix4d T10_2 = generate_transformation_matrix(a(0), alpha(0), d(0), theta1_2);
+
+    Eigen::Matrix4d T16_1 = ((T10_1.inverse())*T60).inverse();
+    Eigen::Matrix4d T16_2 = ((T10_2.inverse())*T60).inverse();
+
+    double Zy_1 = T16_1(1,2);
+    double Zy_2 = T16_2(1,2);
+    double Zx_1 = T16_1(0,2);
+    double Zx_2 = T16_2(0,2);
+
+    // θ6
+    double theta6_1_1 = 0;
+    double theta6_2_1 = 0;
+    double theta6_1_2 = 0;
+    double theta6_2_2 = 0;
+
+    if (is_zero(sin(theta5_1_1)) || (is_zero(Zy_1) && is_zero(Zx_1))) ROS_INFO("Singular configuration. Choosing arbitrary theta6");
+    else theta6_1_1 = atan2(((-Zy_1)/sin(theta5_1_1)),(Zx_1/sin(theta5_1_1)));
+
+    if (is_zero(sin(theta5_1_2)) || (is_zero(Zy_1) && is_zero(Zx_1))) ROS_INFO("Singular configuration. Choosing arbitrary theta6");
+    else theta6_1_2 = atan2(((-Zy_1)/sin(theta5_1_2)),(Zx_1/sin(theta5_1_2)));
+
+    if (is_zero(theta5_2_1) || (is_zero(Zy_2) && is_zero(Zx_2))) ROS_INFO("Singular configuration. Choosing arbitrary theta6");
+    else theta6_2_1 = atan2(((-Zy_2)/sin(theta5_2_1)),(Zx_2/sin(theta5_2_1)));
+
+    if (is_zero(theta5_2_2) || (is_zero(Zy_2) && is_zero(Zx_2))) ROS_INFO("Singular configuration. Choosing arbitrary theta6");
+    else theta6_2_2 = atan2(((-Zy_2)/sin(theta5_2_2)),(Zx_2/sin(theta5_2_2)));
+
+     // θ3
+    Eigen::Matrix4d T61_1 = T16_1.inverse();
+    Eigen::Matrix4d T61_2 = T16_2.inverse();
+
+    Eigen::Matrix4d T54_1_1 = generate_transformation_matrix(a(4), alpha(4), d(4), theta5_1_1);
+    Eigen::Matrix4d T54_1_2 = generate_transformation_matrix(a(4), alpha(4), d(4), theta5_1_2);
+    Eigen::Matrix4d T54_2_1 = generate_transformation_matrix(a(4), alpha(4), d(4), theta5_2_1);
+    Eigen::Matrix4d T54_2_2 = generate_transformation_matrix(a(4), alpha(4), d(4), theta5_2_2);
+
+    Eigen::Matrix4d T65_1_1 = generate_transformation_matrix(a(5), alpha(5), d(5), theta6_1_1);
+    Eigen::Matrix4d T65_1_2 = generate_transformation_matrix(a(5), alpha(5), d(5), theta6_1_2);
+    Eigen::Matrix4d T65_2_1 = generate_transformation_matrix(a(5), alpha(5), d(5), theta6_2_1);
+    Eigen::Matrix4d T65_2_2 = generate_transformation_matrix(a(5), alpha(5), d(5), theta6_2_2);
+
+    Eigen::Matrix4d T41_1_1 = T61_1*((T54_1_1*T65_1_1).inverse());
+    Eigen::Matrix4d T41_1_2 = T61_1*((T54_1_2*T65_1_2).inverse());
+    Eigen::Matrix4d T41_2_1 = T61_2*((T54_2_1*T65_2_1).inverse());
+    Eigen::Matrix4d T41_2_2 = T61_2*((T54_2_2*T65_2_2).inverse());
+
+    V << 0.0, -d(3), 0.0, 1.0; Eigen::Vector4d P;
+    P = T41_1_1*V; Eigen::Vector3d P31_1_1(P(0), P(1), P(2));
+    P = T41_1_2*V; Eigen::Vector3d P31_1_2(P(0), P(1), P(2));
+    P = T41_2_1*V; Eigen::Vector3d P31_2_1(P(0), P(1), P(2));
+    P = T41_2_2*V; Eigen::Vector3d P31_2_2(P(0), P(1), P(2));
+
+    double C = (P31_1_1.squaredNorm()-pow(a(1),2.0)-pow(a(2),2.0))/(2*a(1)*a(2));
+    double theta3_1_1_1;
+    double theta3_1_1_2;
+
+    if (abs(C) > 1) ROS_INFO("Point out of the work space");
+    else 
+    {
+        theta3_1_1_1 = acos(C);
+        theta3_1_1_2 = -acos(C);
+    }
+
+    C = (P31_1_2.squaredNorm()-pow(a(1),2.0)-pow(a(2),2.0))/(2*a(1)*a(2));
+    double theta3_1_2_1;
+    double theta3_1_2_2;
+
+    if (abs(C) > 1) ROS_INFO("Point out of the work space");
+    else
+    {
+        theta3_1_2_1 = acos(C);
+        theta3_1_2_2 = -acos(C);
+    }
+
+    C = (P31_2_1.squaredNorm()-pow(a(1),2.0)-pow(a(2),2.0))/(2*a(1)*a(2));
+    double theta3_2_1_1;
+    double theta3_2_1_2;
+
+    if (abs(C) > 1) ROS_INFO("Point out of the work space");
+    else 
+    {
+        theta3_2_1_1 = acos(C);
+        theta3_2_1_2 = -acos(C);
+    }
+
+    C = (P31_2_2.squaredNorm()-pow(a(1),2.0)-pow(a(2),2.0))/(2*a(1)*a(2));
+    double theta3_2_2_1;
+    double theta3_2_2_2;
+
+    if (abs(C) > 1) ROS_INFO("Point out of the work space");
+    else 
+    {
+        theta3_2_2_1 = acos(C);
+        theta3_2_2_2 = -acos(C);
+    }
+
+    // θ2
+    double theta2_1_1_1 = -atan2(P31_1_1(1), -P31_1_1(0))+asin((a(2)*sin(theta3_1_1_2))/P31_1_1.norm());
+    double theta2_1_1_2 = -atan2(P31_1_1(2), -P31_1_1(1))+asin((a(2)*sin(theta3_1_1_2))/P31_1_1.norm());
+    double theta2_1_2_1 = -atan2(P31_1_2(2), -P31_1_2(1))+asin((a(2)*sin(theta3_1_2_1))/P31_1_2.norm());
+    double theta2_1_2_2 = -atan2(P31_1_2(2), -P31_1_2(1))+asin((a(2)*sin(theta3_1_2_2))/P31_1_2.norm());
+    double theta2_2_1_1 = -atan2(P31_2_1(2), -P31_2_1(1))+asin((a(2)*sin(theta3_2_1_1))/P31_2_1.norm());
+    double theta2_2_1_2 = -atan2(P31_2_1(2), -P31_2_1(1))+asin((a(2)*sin(theta3_2_1_2))/P31_2_1.norm());
+    double theta2_2_2_1 = -atan2(P31_2_2(2), -P31_2_2(1))+asin((a(2)*sin(theta3_2_2_1))/P31_2_2.norm());
+    double theta2_2_2_2 = -atan2(P31_2_2(2), -P31_2_2(1))+asin((a(2)*sin(theta3_2_2_2))/P31_2_2.norm());
+
+    // θ4 
+    Eigen::Matrix4d T21_1_1_1 = generate_transformation_matrix(a(1), alpha(1), d(1), theta2_1_1_1);
+    Eigen::Matrix4d T32_1_1_1 = generate_transformation_matrix(a(2), alpha(2), d(2), theta3_1_1_1);
+    Eigen::Matrix4d T43_1_1_1 = (T21_1_1_1*T32_1_1_1).inverse()*T41_1_1;
+    double xy = T43_1_1_1(1,0);
+    double xx = T43_1_1_1(0,0);
+    double theta4_1_1_1 = atan2(xy, xx);
+
+    Eigen::Matrix4d T21_1_1_2 = generate_transformation_matrix(a(1), alpha(1), d(1), theta2_1_1_2);
+    Eigen::Matrix4d T32_1_1_2 = generate_transformation_matrix(a(2), alpha(2), d(2), theta3_1_1_2);
+    Eigen::Matrix4d T43_1_1_2 = (T21_1_1_2*T32_1_1_2).inverse()*T41_1_2;
+    xy = T43_1_1_2(1,0);
+    xx = T43_1_1_2(0,0);
+    double theta4_1_1_2 = atan2(xy, xx);
+
+    Eigen::Matrix4d T21_1_2_1 = generate_transformation_matrix(a(1), alpha(1), d(1), theta2_1_2_1);
+    Eigen::Matrix4d T32_1_2_1 = generate_transformation_matrix(a(2), alpha(2), d(2), theta3_1_2_1);
+    Eigen::Matrix4d T43_1_2_1 = (T21_1_2_1*T32_1_2_1).inverse()*T41_2_1;
+    xy = T43_1_2_1(1,0);
+    xx = T43_1_2_1(0,0);
+    double theta4_1_2_1 = atan2(xy, xx);
+
+    Eigen::Matrix4d T21_1_2_2 = generate_transformation_matrix(a(1), alpha(1), d(1), theta2_1_2_2);
+    Eigen::Matrix4d T32_1_2_2 = generate_transformation_matrix(a(2), alpha(2), d(2), theta3_1_2_2);
+    Eigen::Matrix4d T43_1_2_2 = (T21_1_2_2*T32_1_2_2).inverse()*T41_2_2;
+    xy = T43_1_2_2(1,0);
+    xx = T43_1_2_2(0,0);
+    double theta4_1_2_2 = atan2(xy, xx);
+
+    Eigen::Matrix4d T21_2_1_1 = generate_transformation_matrix(a(1), alpha(1), d(1), theta2_2_1_1);
+    Eigen::Matrix4d T32_2_1_1 = generate_transformation_matrix(a(2), alpha(2), d(2), theta3_2_1_1);
+    Eigen::Matrix4d T43_2_1_1 = (T21_2_1_1*T32_2_1_1).inverse()*T41_1_1;
+    xy = T43_2_1_1(1,0);
+    xx = T43_2_1_1(0,0);
+    double theta4_2_1_1 = atan2(xy, xx);
+
+    Eigen::Matrix4d T21_2_1_2 = generate_transformation_matrix(a(1), alpha(1), d(1), theta2_2_1_2);
+    Eigen::Matrix4d T32_2_1_2 = generate_transformation_matrix(a(2), alpha(2), d(2), theta3_2_1_2);
+    Eigen::Matrix4d T43_2_1_2 = (T21_2_1_2*T32_2_1_2).inverse()*T41_1_2;
+    xy = T43_2_1_2(1,0);
+    xx = T43_2_1_2(0,0);
+    double theta4_2_1_2 = atan2(xy, xx);
+
+    Eigen::Matrix4d T21_2_2_1 = generate_transformation_matrix(a(1), alpha(1), d(1), theta2_2_2_1);
+    Eigen::Matrix4d T32_2_2_1 = generate_transformation_matrix(a(2), alpha(2), d(2), theta3_2_2_1);
+    Eigen::Matrix4d T43_2_2_1 = (T21_2_2_1*T32_2_2_1).inverse()*T41_2_1;
+    xy = T43_2_2_1(1,0);
+    xx = T43_2_2_1(0,0);
+    double theta4_2_2_1 = atan2(xy, xx);
+
+    Eigen::Matrix4d T21_2_2_2 = generate_transformation_matrix(a(1), alpha(1), d(1), theta2_2_2_2);
+    Eigen::Matrix4d T32_2_2_2 = generate_transformation_matrix(a(2), alpha(2), d(2), theta3_2_2_2);
+    Eigen::Matrix4d T43_2_2_2 = (T21_2_2_2*T32_2_2_2).inverse()*T41_2_2;
+    xy = T43_2_2_2(1,0);
+    xx = T43_2_2_2(0,0);
+    double theta4_2_2_2 = atan2(xy, xx);
+
+    // Configurations
+    Eigen::Matrix<double, 6, 8> Confs {
+        {theta1_1, theta1_1, theta1_1, theta1_1, theta1_2, theta1_2, theta1_2, theta1_2},
+        {theta2_1_1_1, theta2_1_1_2, theta2_1_2_1, theta2_1_2_2, theta2_2_1_1, theta2_2_1_2, theta2_2_2_1, theta2_2_2_2},
+        {theta3_1_1_1, theta3_1_1_2, theta3_1_2_1, theta3_1_2_2, theta3_2_1_1, theta3_2_1_2, theta3_2_2_1, theta3_2_2_2},
+        {theta4_1_1_1, theta4_1_1_2, theta4_1_2_1, theta4_1_2_2, theta4_2_1_1, theta4_2_1_2, theta4_2_2_1, theta4_2_2_2},
+        {theta5_1_1, theta5_1_1, theta5_1_2, theta5_1_2, theta5_2_1, theta5_2_1, theta5_2_2, theta5_2_2},
+        {theta6_1_1, theta6_1_1, theta6_1_2, theta6_1_2, theta6_2_1, theta6_2_1, theta6_2_2, theta6_2_2}
+    };
+
+    return Confs;
+}
+
+// Control if a double is zero
+bool is_zero(double x)
+{
+    if (abs(x) < 0.0000001) return true;
+    return false;
+}
+
+// Geometric jacobian
+Eigen::Matrix<double, 6, 6> generate_geometric_jacobian(Vector6d q)
+{
     Eigen::Vector3d P00(0.0, 0.0, 0.0);
     Eigen::Vector3d z00(0.0, 0.0, 1.0);
 
@@ -96,31 +361,31 @@ Eigen::Matrix<double, 6, 6> my_ur5_geometric_jacobian(Vector6d q)
     Eigen::Vector3d z10 = R10*z00;
 
     Eigen::Matrix4d T21 = generate_transformation_matrix(a(1), alpha(1), d(1), q(1));
-    Eigen::Matrix4d T20 = T21*T10;
+    Eigen::Matrix4d T20 = T10*T21;
     Eigen::Matrix3d R20 = T20.block<3,3>(0,0);
     Eigen::Vector3d P20 = T20.block<3,1>(0,3);
     Eigen::Vector3d z20 = R20*z00;
 
     Eigen::Matrix4d T32 = generate_transformation_matrix(a(2), alpha(2), d(2), q(2));
-    Eigen::Matrix4d T30 = T32*T20;
+    Eigen::Matrix4d T30 = T20*T32;
     Eigen::Matrix3d R30 = T30.block<3,3>(0,0);
     Eigen::Vector3d P30 = T30.block<3,1>(0,3);
     Eigen::Vector3d z30 = R30*z00;
 
     Eigen::Matrix4d T43 = generate_transformation_matrix(a(3), alpha(3), d(3), q(3));
-    Eigen::Matrix4d T40 = T43*T30;
+    Eigen::Matrix4d T40 = T30*T43;
     Eigen::Matrix3d R40 = T40.block<3,3>(0,0);
     Eigen::Vector3d P40 = T40.block<3,1>(0,3);
     Eigen::Vector3d z40 = R40*z00;
 
     Eigen::Matrix4d T54 = generate_transformation_matrix(a(4), alpha(4), d(4), q(4));
-    Eigen::Matrix4d T50 = T54*T50;
+    Eigen::Matrix4d T50 = T40*T54;
     Eigen::Matrix3d R50 = T50.block<3,3>(0,0);
     Eigen::Vector3d P50 = T50.block<3,1>(0,3);
     Eigen::Vector3d z50 = R50*z00;
 
     Eigen::Matrix4d T65 = generate_transformation_matrix(a(5), alpha(5), d(5), q(5));
-    Eigen::Matrix4d T60 = T65*T50;
+    Eigen::Matrix4d T60 = T50*T65;
     Eigen::Vector3d P60 = T60.block<3,1>(0,3);
 
     Vector6d J0; J0 << z00.cross(P60-P00), z00;
@@ -141,11 +406,8 @@ Eigen::Matrix<double, 6, 6> my_ur5_geometric_jacobian(Vector6d q)
 }
 
 // Geometric Jacobian
-Eigen::Matrix<double, 6, 6> ur5_geometric_jacobian(Vector6d q)
+Eigen::Matrix<double, 6, 6> generate_ur5_geometric_jacobian(Vector6d q)
 {
-    a *= scalar_factor;
-    d *= scalar_factor;
-
     Vector6d J0(
         d(4)*(cos(q(0))*cos(q(4)) + cos(q(1) + q(2) + q(3))*sin(q(0))*sin(q(4))) + d(3)*cos(q(0)) - a(1)*cos(q(1))*sin(q(0)) - d(4)*sin(q(1) + q(2) + q(3))*sin(q(0)) - a(2)*cos(q(1))*cos(q(2))*sin(q(0)) + a(2)*sin(q(0))*sin(q(1))*sin(q(2)),
         d(4)*(cos(q(4))*sin(q(0)) - cos(q(1) + q(2) + q(3))*cos(q(0))*sin(q(4))) + d(3)*sin(q(0)) + a(1)*cos(q(0))*cos(q(1)) + d(4)*sin(q(1) + q(2) + q(3))*cos(q(0)) + a(2)*cos(q(0))*cos(q(1))*cos(q(2)) - a(2)*cos(q(0))*sin(q(1))*sin(q(2)),
@@ -210,7 +472,7 @@ Eigen::Matrix<double, 6, 6> ur5_geometric_jacobian(Vector6d q)
     return geometric_jacobain;
 }
 
-Eigen::Matrix<double, 6, 6> analitycal_jacobian(Eigen::Matrix<double, 6, 6> geometric_jacobian, Eigen::Vector3d euler_angles)
+Eigen::Matrix<double, 6, 6> generate_analitycal_jacobian(Eigen::Matrix<double, 6, 6> geometric_jacobian, Eigen::Vector3d euler_angles)
 {
     // Extract the angles
     double phi = euler_angles(0);
@@ -266,7 +528,7 @@ Eigen::Matrix<double, 6, Eigen::Dynamic> inverse_differential_kinematics(Vector6
     Eigen::Matrix4d transformation_matrix_step;
     Eigen::Vector3d position_step, position_velocity, euler_angles_velocity, euler_angles_step;
     Eigen::Matrix3d rotation_matrix_step;
-    Eigen::Matrix<double, 6, 6> geometric_jacobian_step, analitycal_jacobian_step;
+    Eigen::Matrix<double, 6, 6> geometric_jacobian, analitycal_jacobian;
 
     q_step = q;
 
@@ -283,8 +545,8 @@ Eigen::Matrix<double, 6, Eigen::Dynamic> inverse_differential_kinematics(Vector6
         euler_angles_velocity = (euler_angles_function(t, initial_euler_angles, final_euler_angles)-euler_angles_function(t-delta_time, initial_euler_angles, final_euler_angles))/delta_time;
 
         // Analitycal jacobian
-        geometric_jacobian_step = ur5_geometric_jacobian(q_step);
-        analitycal_jacobian_step = analitycal_jacobian(geometric_jacobian_step, euler_angles_step);
+        geometric_jacobian = generate_geometric_jacobian(q_step);
+        analitycal_jacobian = generate_analitycal_jacobian(geometric_jacobian, euler_angles_step);
 
         // Composition of the jacobian input 
         input_jacobian << 
@@ -292,7 +554,7 @@ Eigen::Matrix<double, 6, Eigen::Dynamic> inverse_differential_kinematics(Vector6
             euler_angles_velocity+Kphi*(euler_angles_function(t, initial_euler_angles, final_euler_angles)-euler_angles_step);
 
         // Velocity
-        q_derivative = analitycal_jacobian_step.inverse()*input_jacobian;
+        q_derivative = analitycal_jacobian.completeOrthogonalDecomposition().pseudoInverse()*input_jacobian;
 
         // Final computation
         q_step = q_step+q_derivative*delta_time;
@@ -311,7 +573,7 @@ Eigen::Matrix<double, 6, Eigen::Dynamic> inverse_differential_kinematics_with_qu
     Eigen::Vector3d position_step, angular_velocity, position_velocity; 
     Eigen::Matrix3d rotation_matrix_step;
     Eigen::Quaterniond quaternion_step, quaternion_error, quaternion_velocity;
-    Eigen::Matrix<double, 6, 6> jacobian_step, inverse_jacobian_step;
+    Eigen::Matrix<double, 6, 6> geometric_jacobian, inverse_geometric_jacobian;
 
     for (double t=delta_time; t<duration_trajectory; t+=delta_time) 
     {
@@ -327,9 +589,9 @@ Eigen::Matrix<double, 6, Eigen::Dynamic> inverse_differential_kinematics_with_qu
 	    angular_velocity = (quaternion_velocity.vec()*2)/delta_time;
 
         // Jacobian computation
-        jacobian_step = ur5_geometric_jacobian(q_step);
-        inverse_jacobian_step = jacobian_step.completeOrthogonalDecomposition().pseudoInverse();
-        if (abs(jacobian_step.determinant()) < 0.0000001) std::cout << "Near singular configuration" << std::endl;
+        geometric_jacobian = generate_geometric_jacobian(q_step);
+        inverse_geometric_jacobian = ((geometric_jacobian.transpose()*geometric_jacobian).inverse())*geometric_jacobian.transpose()+Eigen::Matrix<double, 6, 6>::Identity()*0.000001;
+        if (abs(geometric_jacobian.determinant()) < 0.0000001) ROS_INFO("Near singular configuration");
 
         // Quaternion error
         quaternion_error = quaternion_function(t, initial_quaternion, final_quaternion)*(quaternion_step.conjugate());
@@ -338,7 +600,7 @@ Eigen::Matrix<double, 6, Eigen::Dynamic> inverse_differential_kinematics_with_qu
         input_jacobian << position_velocity+Kp*(position_function(t, initial_point, final_point)-position_step), angular_velocity+Kq*(quaternion_error.vec());
 
         // Final computation
-        q_derivative = inverse_jacobian_step*input_jacobian;
+        q_derivative = inverse_geometric_jacobian*input_jacobian;
         q_step = q_step+q_derivative*delta_time;
         trajectory.conservativeResize(6, trajectory.cols()+1);
         trajectory.col(trajectory.cols()-1) = q_step;

@@ -7,9 +7,6 @@
 // Vector composed by 6 doubles
 typedef Eigen::Matrix<double, 6, 1> Vector6d;
 
-// Dimensione factor
-const double scalar_factor = 1.0;
-
 // Correction parameters 
 Eigen::Matrix3d Kp = Eigen::Matrix3d::Identity()*10; 
 Eigen::Matrix3d Kq = Eigen::Matrix3d::Identity()*-10; 
@@ -34,11 +31,16 @@ Eigen::Vector3d from_rotation_matrix_to_euler_angles(Eigen::Matrix3d rotation_ma
 // Direct Kinematics
 Eigen::Matrix4d generate_transformation_matrix(double a, double alpha, double d, double theta);
 Eigen::Matrix4d direct_kinematics(Vector6d q); 
+Eigen::Matrix4d direct_kinematics_2(Vector6d q);
+
+// Inverse kinematics
+Eigen::Matrix<double, 6, 8> inverse_kinematics(Eigen::Vector3d P60, Eigen::Matrix3d R60);
+bool is_zero(double x);
 
 // Geometric Jacobian
-Eigen::Matrix<double, 6, 6> my_ur5_geometric_jacobian(Vector6d q);
-Eigen::Matrix<double, 6, 6> ur5_geometric_jacobian(Vector6d q);
-Eigen::Matrix<double, 6, 6> analitycal_jacobian(Eigen::Matrix<double, 6, 6> geometric_jacobian, Eigen::Vector3d euler_angles);
+Eigen::Matrix<double, 6, 6> generate_ur5_geometric_jacobian(Vector6d q);
+Eigen::Matrix<double, 6, 6> generate_geometric_jacobian(Vector6d q);
+Eigen::Matrix<double, 6, 6> generate_analitycal_jacobian(Eigen::Matrix<double, 6, 6> geometric_jacobian, Eigen::Vector3d euler_angles);
 
 // Generate a trajectory 
 Eigen::Vector3d position_function(double t, Eigen::Vector3d initial_position, Eigen::Vector3d final_position);
