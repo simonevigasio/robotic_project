@@ -4,6 +4,9 @@
 // Eigen 
 #include "Eigen/Dense"
 
+// ROS
+#include "ros/ros.h"
+
 // Standard
 #include <iostream>
 #include <cmath>
@@ -68,12 +71,12 @@ Eigen::Matrix4d T65f(double th6)
     };
 }
 
-Eigen::Matrix4d direct_kinematics(Vector6d q)
+Eigen::Matrix4d directKin(Vector6d q)
 {
     return T10f(q(0)) * T21f(q(1)) * T32f(q(2)) * T43f(q(3)) * T54f(q(4)) * T65f(q(5));
 }
 
-Eigen::Matrix<double, 8, 6> inverse_kinematics(Eigen::Vector3d P60, Eigen::Matrix3d R60)
+Eigen::Matrix<double, 8, 6> inverseKin(Eigen::Vector3d P60, Eigen::Matrix3d R60)
 {
     Eigen::Matrix4d T60;
     T60.setZero();
@@ -266,12 +269,12 @@ Eigen::Matrix<double, 8, 6> inverse_kinematics(Eigen::Vector3d P60, Eigen::Matri
     return conf;
 }
 
-Eigen::Matrix3d from_euler_angles_to_rotation_matrix(Eigen::Vector3d euler_angles)
+Eigen::Matrix3d fromEulerAnglesToRotationMatrix(Eigen::Vector3d eulerAngles)
 {
-    const double phi = euler_angles(0);
-    const double theta = euler_angles(1);
-    const double gamma = euler_angles(2);
-
+    const double phi = eulerAngles(0);
+    const double theta = eulerAngles(1);
+    const double gamma = eulerAngles(2);
+    
     return Eigen::Matrix3d {
             {cos(phi)*cos(theta), cos(phi)*sin(theta)*sin(gamma)-sin(phi)*cos(gamma), cos(phi)*sin(theta)*cos(gamma)+sin(phi)*sin(gamma)},
             {sin(phi)*cos(theta), sin(phi)*sin(theta)*sin(gamma)+cos(phi)*cos(gamma), sin(phi)*sin(theta)*cos(gamma)-cos(phi)*sin(gamma)},
@@ -329,70 +332,78 @@ Eigen::Matrix<double, 6, 6> jacobian(Vector6d q)
     return J;
 }
 
-Eigen::Vector3d position_function(double t, Eigen::Vector3d initial_position, Eigen::Vector3d final_position)
+Eigen::Vector3d x(double t, Eigen::Vector3d initalPoint, Eigen::Vector3d finalPoint)
 {
-    double nomalized_t = t/10.0;
-    if (nomalized_t > 1) return final_position;
-    else return nomalized_t*final_position+(1-nomalized_t)*initial_position;
+    const double nomalizedTime = t / durationTrajectory;
+    if (nomalizedTime > 1) return finalPoint;
+    else return (nomalizedTime * finalPoint) + ((1 - nomalizedTime) * initalPoint);
 }
 
-Eigen::Quaterniond quaternion_function(double t, Eigen::Quaterniond initial_quaternian, Eigen::Quaterniond final_quaternian)
+Eigen::Quaterniond slerp(double t, Eigen::Quaterniond initialQuaternion, Eigen::Quaterniond finalQuaternion)
 {
-    double nomalized_t = t/10.0;
-    if (nomalized_t > 1) return final_quaternian;
-    else return initial_quaternian.slerp(nomalized_t, final_quaternian);
+    const double nomalizedTime = t / durationTrajectory;
+    if (nomalizedTime > 1) return finalQuaternion;
+    else return initialQuaternion.slerp(nomalizedTime, finalQuaternion);
 }
 
-Eigen::Matrix<double, 6, Eigen::Dynamic> inverse_differential_kinematics_with_quaternions(Vector6d q, Eigen::Vector3d initial_point, Eigen::Quaterniond initial_quaternion, Eigen::Vector3d final_point, Eigen::Quaterniond final_quaternion)
+Eigen::Matrix<double, 6, Eigen::Dynamic> inverseKinWithQuaternions(
+    Vector6d q, 
+    Eigen::Vector3d initialPoint,
+    Eigen::Vector3d finalPoint, 
+    Eigen::Quaterniond initialQuaternion, 
+    Eigen::Quaterniond finalQuaternion 
+)
 {
-    Vector6d q_step,input_jacobian, q_derivative;
-    Eigen::Matrix<double, 6, Eigen::Dynamic> trajectory = q;
-    Eigen::Matrix4d transformation_matrix_step;
-    Eigen::Vector3d position_step, angular_velocity, position_velocity; 
-    Eigen::Matrix3d rotation_matrix_step;
-    Eigen::Quaterniond quaternion_step, quaternion_error, quaternion_velocity;
-    Eigen::Matrix<double, 6, 6> jacobian_step, inverse_jacobian_step;
-    double delta_time = 0.1; 
-    double duration_trajectory = 10.0;
+    Vector6d qk; 
+    Vector6d input;
+    Vector6d qDot;
 
-    q_step = q;
+    Eigen::Matrix<double, 6, Eigen::Dynamic> trajectory;
 
-    for (double t=delta_time; t<duration_trajectory; t+=delta_time) 
+    Eigen::Matrix4d transformationMatrixk;
+    Eigen::Vector3d pointk;
+    Eigen::Matrix3d rotationMatrixk;
+    Eigen::Quaterniond quaternionk;
+
+    Eigen::Vector3d angularVelocity;
+    Eigen::Quaterniond quaternionVelocity;
+    Eigen::Vector3d positionVelocity; 
+
+    Eigen::Quaterniond quaternionError;
+    Eigen::Matrix<double, 6, 6> jacobiank;
+    Eigen::Matrix<double, 6, 6> inverseJacobiank;
+
+    Eigen::Matrix3d Kp = Eigen::Matrix3d::Identity()*10;
+    Eigen::Matrix3d Kq = Eigen::Matrix3d::Identity()*10;
+
+    trajectory = qk = q;
+
+    for (double t = dt; t < durationTrajectory; t += dt) 
     {
-        Eigen::Matrix3d Kp = Eigen::Matrix3d::Identity()*10;
-        Eigen::Matrix3d Kq = Eigen::Matrix3d::Identity()*10;
+        transformationMatrixk = directKin(qk);
+        pointk = transformationMatrixk.block(0, 3, 3, 1);
+        rotationMatrixk = transformationMatrixk.block(0, 0, 3, 3);
+        quaternionk = rotationMatrixk;
 
-        // Current position and quaternion
-        transformation_matrix_step = direct_kinematics(q_step);
-        position_step = transformation_matrix_step.block<3,1>(0,3);
-        std::cout << "Posizione" << std::endl;
-        std::cout << position_step<< std::endl;
-        rotation_matrix_step = transformation_matrix_step.block<3,3>(0,0);
-        quaternion_step = rotation_matrix_step;
+        positionVelocity = (x(t, initialPoint, finalPoint) - x(t - dt, initialPoint, finalPoint)) / dt;
+        quaternionVelocity = slerp(t + dt, initialQuaternion, finalQuaternion) * slerp(t, initialQuaternion, finalQuaternion).conjugate(); 
+	    angularVelocity = (quaternionVelocity.vec() * 2) / dt;
 
-        // Desired velocities 
-        position_velocity = (position_function(t, initial_point, final_point)-position_function(t-delta_time, initial_point, final_point))/delta_time;
-        quaternion_velocity = (quaternion_function(t+delta_time, initial_quaternion, final_quaternion)*quaternion_function(t, initial_quaternion, final_quaternion).conjugate()); 
-	    angular_velocity = (quaternion_velocity.vec()*2)/delta_time;
+        jacobiank = jacobian(qk);
+        inverseJacobiank = jacobiank.completeOrthogonalDecomposition().pseudoInverse() + (0.00001 * Eigen::Matrix<double, 6, 6>::Identity());
+        if (abs(jacobiank.determinant()) < 0.0000001) ROS_INFO("Near singular configuration");
 
-        // Jacobian computation
-//        jacobian_step = ur5_geometric_jacobian(q_step);
-        jacobian_step = jacobian(q_step);
-        inverse_jacobian_step = jacobian_step.completeOrthogonalDecomposition().pseudoInverse() + 0.00001*(Eigen::Matrix<double, 6, 6>::Identity());
-//  NON VA       inverse_jacobian_step = (jacobian_step.transpose)*(jacobian_step*(jacobian_step.transpose())).inverse();
-        if (abs(jacobian_step.determinant()) < 0.0000001) std::cout << "Near singular configuration" << std::endl;
-
-        // Quaternion error
-        quaternion_error = quaternion_function(t, initial_quaternion, final_quaternion)*(quaternion_step.conjugate());
+        quaternionError = slerp(t, initialQuaternion, finalQuaternion) * quaternionk.conjugate();
         
-        // Inverse geometric jacobian input
-        input_jacobian << position_velocity+Kp*(position_function(t, initial_point, final_point)-position_step), angular_velocity+Kq*(quaternion_error.vec());
+        input << 
+            positionVelocity + (Kp * (x(t, initialPoint, finalPoint) - pointk)), 
+            angularVelocity + (Kq * quaternionError.vec());
 
-        // Final computation
-        q_derivative = inverse_jacobian_step*input_jacobian;
-        q_step = q_step+q_derivative*delta_time;
-        trajectory.conservativeResize(6, trajectory.cols()+1);
-        trajectory.col(trajectory.cols()-1) = q_step;
+        qDot = inverseJacobiank * input;
+        qk = qk + (qDot * dt);
+
+        trajectory.conservativeResize(6, trajectory.cols() + 1);
+        trajectory.col(trajectory.cols() - 1) = qk;
     }
 
     return trajectory;
