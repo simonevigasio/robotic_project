@@ -28,7 +28,6 @@ Vector6d read_q()
     Eigen::VectorXd q(8); for (int i=0; i<8; ++i) q(i) = msg->position[i];
     Vector6d arm(q(4), q(3), q(0), q(5), q(6), q(7));
     return arm;
-    // ciao gio
 }
 
 // Convertion from euler angles to a rotation matrix
@@ -94,34 +93,34 @@ Eigen::Matrix<double, 6, 6> my_ur5_geometric_jacobian(Vector6d q)
     Eigen::Matrix4d T10 = generate_transformation_matrix(a(0), alpha(0), d(0), q(0));
     Eigen::Matrix3d R10 = T10.block<3,3>(0,0);
     Eigen::Vector3d P10 = T10.block<3,1>(0,3);
-    Eigen::Vector3d z10 = R10*z00;
+    Eigen::Vector3d z10 = R10.block<3,1>(0,2);
 
     Eigen::Matrix4d T21 = generate_transformation_matrix(a(1), alpha(1), d(1), q(1));
-    Eigen::Matrix4d T20 = T21*T10;
+    Eigen::Matrix4d T20 = T10*T21;
     Eigen::Matrix3d R20 = T20.block<3,3>(0,0);
     Eigen::Vector3d P20 = T20.block<3,1>(0,3);
-    Eigen::Vector3d z20 = R20*z00;
+    Eigen::Vector3d z20 = R20.block<3,1>(0,2);
 
     Eigen::Matrix4d T32 = generate_transformation_matrix(a(2), alpha(2), d(2), q(2));
-    Eigen::Matrix4d T30 = T32*T20;
+    Eigen::Matrix4d T30 = T20*T32;
     Eigen::Matrix3d R30 = T30.block<3,3>(0,0);
     Eigen::Vector3d P30 = T30.block<3,1>(0,3);
-    Eigen::Vector3d z30 = R30*z00;
+    Eigen::Vector3d z30 = R30.block<3,1>(0,2);
 
     Eigen::Matrix4d T43 = generate_transformation_matrix(a(3), alpha(3), d(3), q(3));
-    Eigen::Matrix4d T40 = T43*T30;
+    Eigen::Matrix4d T40 = T30*T43;
     Eigen::Matrix3d R40 = T40.block<3,3>(0,0);
     Eigen::Vector3d P40 = T40.block<3,1>(0,3);
-    Eigen::Vector3d z40 = R40*z00;
+    Eigen::Vector3d z40 = R40.block<3,1>(0,2);
 
     Eigen::Matrix4d T54 = generate_transformation_matrix(a(4), alpha(4), d(4), q(4));
-    Eigen::Matrix4d T50 = T54*T50;
+    Eigen::Matrix4d T50 = T40*T54;
     Eigen::Matrix3d R50 = T50.block<3,3>(0,0);
     Eigen::Vector3d P50 = T50.block<3,1>(0,3);
-    Eigen::Vector3d z50 = R50*z00;
+    Eigen::Vector3d z50 = R50.block<3,1>(0,2);
 
     Eigen::Matrix4d T65 = generate_transformation_matrix(a(5), alpha(5), d(5), q(5));
-    Eigen::Matrix4d T60 = T65*T50;
+    Eigen::Matrix4d T60 = T50*T65;
     Eigen::Vector3d P60 = T60.block<3,1>(0,3);
 
     Vector6d J0; J0 << z00.cross(P60-P00), z00;
@@ -138,6 +137,7 @@ Eigen::Matrix<double, 6, 6> my_ur5_geometric_jacobian(Vector6d q)
     geometric_jacobain.col(3) = J3;
     geometric_jacobain.col(4) = J4;
     geometric_jacobain.col(5) = J5;
+
     return geometric_jacobain;
 }
 
@@ -220,23 +220,39 @@ Eigen::Matrix<double, 6, 6> analitycal_jacobian(Eigen::Matrix<double, 6, 6> geom
 
     // Matrix used to convert angular velocity to euler angles 
     Eigen::Matrix3d T {
-        {cos(theta)*cos(gamma), -sin(gamma), 0.0}, 
-        {cos(theta)*sin(gamma), cos(gamma), 0.0}, 
+        {cos(theta)*cos(phi), -sin(phi), 0.0}, 
+        {cos(theta)*sin(phi), cos(phi), 0.0}, 
         {-sin(theta), 0.0, 1.0}
     };
-
+/*
+    Eigen::Matrix3d T {
+        {0.0, -sin(gamma), cos(theta)*cos(gamma)}, 
+        {0.0, cos(gamma), cos(theta)*sin(gamma)}, 
+        {1.0, 0.0, -sin(theta)}
+    };
+    Eigen::Matrix3d T {
+        {cos(theta)*cos(gamma), -sin(gamma), 0.0}, 
+        {cos(theta)*sin(gamma), cos(gamma), 0.0}, 
+        {0.0, -sin(theta), 1.0}
+    };
+*/
     // Control for safety of the position 
     if (abs(T.determinant()) < 0.0000001) 
     {
         ROS_INFO("Near singular configuration");
         ROS_INFO("phi: %f, theta: %f, gamma: %f", phi, theta, gamma);
     }
-
+/*
     // Implement the product with the geometric jacobian
     Eigen::Matrix<double, 6, 6> Ta;
     Ta << Eigen::Matrix3d::Identity(), Eigen::Matrix3d::Zero(), Eigen::Matrix3d::Zero(), T;
 
     return Ta.inverse()*geometric_jacobian;
+*/
+    Eigen::Matrix<double, 6, 6> Ta;
+    Ta << Eigen::Matrix3d::Identity(), Eigen::Matrix3d::Zero(), Eigen::Matrix3d::Zero(), T.inverse();
+
+    return Ta*geometric_jacobian;
 }
 
 Eigen::Vector3d position_function(double t, Eigen::Vector3d initial_position, Eigen::Vector3d final_position)
@@ -293,7 +309,7 @@ Eigen::Matrix<double, 6, Eigen::Dynamic> inverse_differential_kinematics(Vector6
             euler_angles_velocity+Kphi*(euler_angles_function(t, initial_euler_angles, final_euler_angles)-euler_angles_step);
 
         // Velocity
-        q_derivative = analitycal_jacobian_step.inverse()*input_jacobian;
+        q_derivative = (analitycal_jacobian_step.completeOrthogonalDecomposition().pseudoInverse() + 0.00001*(Eigen::Matrix<double, 6, 6>::Identity()))*input_jacobian ;
 
         // Final computation
         q_step = q_step+q_derivative*delta_time;
@@ -314,11 +330,15 @@ Eigen::Matrix<double, 6, Eigen::Dynamic> inverse_differential_kinematics_with_qu
     Eigen::Quaterniond quaternion_step, quaternion_error, quaternion_velocity;
     Eigen::Matrix<double, 6, 6> jacobian_step, inverse_jacobian_step;
 
+    q_step = q;
+
     for (double t=delta_time; t<duration_trajectory; t+=delta_time) 
     {
         // Current position and quaternion
         transformation_matrix_step = direct_kinematics(q_step);
         position_step = transformation_matrix_step.block<3,1>(0,3);
+        std::cout << "Posizione" << std::endl;
+        std::cout << position_step<< std::endl;
         rotation_matrix_step = transformation_matrix_step.block<3,3>(0,0);
         quaternion_step = rotation_matrix_step;
 
@@ -328,8 +348,10 @@ Eigen::Matrix<double, 6, Eigen::Dynamic> inverse_differential_kinematics_with_qu
 	    angular_velocity = (quaternion_velocity.vec()*2)/delta_time;
 
         // Jacobian computation
+//        jacobian_step = ur5_geometric_jacobian(q_step);
         jacobian_step = ur5_geometric_jacobian(q_step);
-        inverse_jacobian_step = jacobian_step.completeOrthogonalDecomposition().pseudoInverse();
+        inverse_jacobian_step = jacobian_step.completeOrthogonalDecomposition().pseudoInverse() + 0.00001*(Eigen::Matrix<double, 6, 6>::Identity());
+//  NON VA       inverse_jacobian_step = (jacobian_step.transpose)*(jacobian_step*(jacobian_step.transpose())).inverse();
         if (abs(jacobian_step.determinant()) < 0.0000001) std::cout << "Near singular configuration" << std::endl;
 
         // Quaternion error

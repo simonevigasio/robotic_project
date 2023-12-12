@@ -12,7 +12,7 @@ const double scalar_factor = 1.0;
 
 // Correction parameters 
 Eigen::Matrix3d Kp = Eigen::Matrix3d::Identity()*10; 
-Eigen::Matrix3d Kq = Eigen::Matrix3d::Identity()*-10; 
+Eigen::Matrix3d Kq = Eigen::Matrix3d::Identity()*(-10); 
 Eigen::Matrix3d Kphi = Eigen::Matrix3d::Identity()*10;
 
 // time trajectory parameters
