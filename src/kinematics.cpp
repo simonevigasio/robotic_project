@@ -6,79 +6,82 @@
 
 // ROS
 #include "ros/ros.h"
+#include "sensor_msgs/JointState.h"
+#include "boost/shared_ptr.hpp"
+#include "std_msgs/Float64MultiArray.h"
 
 // Standard
 #include <iostream>
 #include <cmath>
 
-Eigen::Matrix4d T10f(double th1)
+M4d T10f(double th1)
 {
-    return Eigen::Matrix4d {
-        {cos(th1), -sin(th1), 0.0, 0.0},
-        {sin(th1), cos(th1), 0.0, 0.0},
-        {0.0, 0.0, 1.0, d(0)},
-        {0.0, 0.0, 0.0, 1.0}
+    return M4d {
+        {cos(th1) ,-sin(th1) ,0 ,0},
+        {sin(th1) ,cos(th1) ,0 ,0},
+        {0 ,0 ,1 ,d(0)},
+        {0 ,0 ,0 ,1}
     };
 }
 
-Eigen::Matrix4d T21f(double th2)
+M4d T21f(double th2)
 {
-    return Eigen::Matrix4d {
-        {cos(th2), -sin(th2), 0.0, 0.0},
-        {0.0, 0.0, -1.0, 0.0},
-        {sin(th2), cos(th2), 0.0, 0.0},
-        {0.0, 0.0, 0.0, 1.0}
+    return M4d {
+        {cos(th2) ,-sin(th2) ,0 ,0},
+        {0 ,0 ,-1 ,0},
+        {sin(th2) ,cos(th2) ,0 ,0},
+        {0 ,0 ,0 ,1}
     };
 }
 
-Eigen::Matrix4d T32f(double th3)
+M4d T32f(double th3)
 {
-    return Eigen::Matrix4d {
-        {cos(th3), -sin(th3), 0.0, a(1)},
-        {sin(th3), cos(th3), 0.0, 0.0},
-        {0.0, 0.0, 1.0, d(2)},
-        {0.0, 0.0, 0.0, 1.0}
+    return M4d {
+        {cos(th3) ,-sin(th3) ,0 ,a(1)},
+        {sin(th3) ,cos(th3) ,0 ,0},
+        {0 ,0 ,1 ,d(2)},
+        {0 ,0 ,0 ,1}
     };
 }
 
-Eigen::Matrix4d T43f(double th4)
+M4d T43f(double th4)
 {
-    return Eigen::Matrix4d {
-        {cos(th4), -sin(th4), 0.0, a(2)},
-        {sin(th4), cos(th4), 0.0, 0.0},
-        {0.0, 0.0, 1.0, d(3)},
-        {0.0, 0.0, 0.0, 1.0}
+    return M4d {
+        {cos(th4) ,-sin(th4) ,0 ,a(2)},
+        {sin(th4) ,cos(th4) ,0 ,0},
+        {0 ,0 ,1 ,d(3)},
+        {0 ,0 ,0 ,1}
     };
 }
 
-Eigen::Matrix4d T54f(double th5)
+M4d T54f(double th5)
 {
-    return Eigen::Matrix4d {
-        {cos(th5), -sin(th5), 0.0, 0.0},
-        {0.0, 0.0, -1.0, -d(4)},
-        {sin(th5), cos(th5), 0.0, 0.0},
-        {0.0, 0.0, 0.0, 1.0}
+    return M4d {
+        {cos(th5) ,-sin(th5) ,0 ,0},
+        {0 ,0 ,-1 ,-d(4)},
+        {sin(th5) ,cos(th5) ,0 ,0},
+        {0 ,0 ,0 ,1}
     };
 }
 
-Eigen::Matrix4d T65f(double th6)
+M4d T65f(double th6)
 {
-    return Eigen::Matrix4d {
-        {cos(th6), -sin(th6), 0.0, 0.0},
-        {0.0, 0.0, 1.0, d(5)},
-        {-sin(th6), -cos(th6), 0.0, 0.0},
-        {0.0, 0.0, 0.0, 1.0}
+    return M4d {
+        {cos(th6) ,-sin(th6) ,0 ,0},
+        {0 ,0 ,1 ,d(5)},
+        {-sin(th6) ,-cos(th6) ,0 ,0},
+        {0 ,0 ,0 ,1}
     };
 }
 
-Eigen::Matrix4d directKin(Vector6d q)
+M4d direct_kin(V6d js)
 {
-    return T10f(q(0)) * T21f(q(1)) * T32f(q(2)) * T43f(q(3)) * T54f(q(4)) * T65f(q(5));
+    return T10f(js(0)) * T21f(js(1)) * T32f(js(2)) * T43f(js(3)) * T54f(js(4)) * T65f(js(5));
 }
 
-Eigen::Matrix<double, 8, 6> inverseKin(Eigen::Vector3d P60, Eigen::Matrix3d R60)
+InverseConfigurations inverse_kin(V3d P60, M3d R60)
 {
-    Eigen::Matrix4d T60;
+    M4d T60;
     T60.setZero();
     T60.block(0, 0, 3, 3) = R60;
     T60.block(0, 3, 3, 1) = P60;
@@ -100,12 +103,12 @@ Eigen::Matrix<double, 8, 6> inverseKin(Eigen::Vector3d P60, Eigen::Matrix3d R60)
 
     // Theta 6
 
-    Eigen::Matrix4d T06;
+    M4d T06;
     T06 = T60.inverse();
 
-    Eigen::Vector3d Xhat;
+    V3d Xhat;
     Xhat = T06.block(0, 0, 3, 1);
-    Eigen::Vector3d Yhat;
+    V3d Yhat;
     Yhat = T06.block(0, 1, 3, 1);
 
     double th6_1 = atan2(((-Xhat(1) * sin(th1_1) + Yhat(1) * cos(th1_1)) / sin(th5_1)), ((Xhat(0) * sin(th1_1) - Yhat(0) * cos(th1_1)) / sin(th5_1)));
@@ -115,11 +118,11 @@ Eigen::Matrix<double, 8, 6> inverseKin(Eigen::Vector3d P60, Eigen::Matrix3d R60)
 
     // Theta 3
 
-    Eigen::Matrix4d T41m;
-    Eigen::Vector3d P41_1;
-    Eigen::Vector3d P41_2;
-    Eigen::Vector3d P41_3;
-    Eigen::Vector3d P41_4;
+    M4d T41m;
+    V3d P41_1;
+    V3d P41_2;
+    V3d P41_3;
+    V3d P41_4;
     double P41xz_1;
     double P41xz_2;
     double P41xz_3;
@@ -220,8 +223,8 @@ Eigen::Matrix<double, 8, 6> inverseKin(Eigen::Vector3d P60, Eigen::Matrix3d R60)
 
     // Theta 4
 
-    Eigen::Matrix4d T43m;
-    Eigen::Vector3d Xhat43;
+    M4d T43m;
+    V3d Xhat43;
     T43m = T32f(th3_1).inverse() * T21f(th2_1).inverse() * T10f(th1_1).inverse() * T60 * T65f(th6_1).inverse() * T54f(th5_1).inverse();
     Xhat43 = T43m.block(0, 0, 3, 1);
     float th4_1 = atan2(Xhat43(1), Xhat43(0));
@@ -256,7 +259,7 @@ Eigen::Matrix<double, 8, 6> inverseKin(Eigen::Vector3d P60, Eigen::Matrix3d R60)
 
     // Configurations
 
-    Eigen::Matrix<double, 8, 6> conf;
+    InverseConfigurations conf;
     conf << th1_1, th2_1, th3_1, th4_1, th5_1, th6_1,
         th1_1, th2_2, th3_2, th4_2, th5_2, th6_2,
         th1_2, th2_3, th3_3, th4_3, th5_3, th6_3,
@@ -269,142 +272,324 @@ Eigen::Matrix<double, 8, 6> inverseKin(Eigen::Vector3d P60, Eigen::Matrix3d R60)
     return conf;
 }
 
-Eigen::Matrix3d fromEulerAnglesToRotationMatrix(Eigen::Vector3d eulerAngles)
+M3d euler_to_rotation_matrix(V3d eu)
 {
-    const double phi = eulerAngles(0);
-    const double theta = eulerAngles(1);
-    const double gamma = eulerAngles(2);
+    const double phi = eu(0);
+    const double theta = eu(1);
+    const double gamma = eu(2);
     
-    return Eigen::Matrix3d {
+    return M3d {
             {cos(phi)*cos(theta), cos(phi)*sin(theta)*sin(gamma)-sin(phi)*cos(gamma), cos(phi)*sin(theta)*cos(gamma)+sin(phi)*sin(gamma)},
             {sin(phi)*cos(theta), sin(phi)*sin(theta)*sin(gamma)+cos(phi)*cos(gamma), sin(phi)*sin(theta)*cos(gamma)-cos(phi)*sin(gamma)},
             {-sin(theta), cos(theta)*sin(gamma), cos(theta)*cos(gamma)}
     };
 }
 
-Eigen::Matrix<double, 6, 6> jacobian(Vector6d q)
+Jacobian jacobian(V6d js)
 {
-    Eigen::Matrix<double, 6, 6> J(6, 6);
+    Jacobian J;
     J.setZero();
-    Vector6d J1(6, 1);
-    J1 << d(4) * (cos(q(0)) * cos(q(4)) + cos(q(1) + q(2) + q(3)) * sin(q(0)) * sin(q(4))) + d(2) * cos(q(0)) + d(3) * cos(q(0)) - a(2) * cos(q(1) + q(2)) * sin(q(0)) - a(1) * cos(q(1)) * sin(q(0)) - d(4) * sin(q(1) + q(2) + q(3)) * sin(q(0)),
-        d(4) * (cos(q(4)) * sin(q(0)) - cos(q(1) + q(2) + q(3)) * cos(q(0)) * sin(q(4))) + d(2) * sin(q(0)) + d(3) * sin(q(0)) + a(2) * cos(q(1) + q(2)) * cos(q(0)) + a(1) * cos(q(0)) * cos(q(1)) + d(4) * sin(q(1) + q(2) + q(3)) * cos(q(0)),
+    V6d J1(6, 1);
+    J1 << d(4) * (cos(js(0)) * cos(js(4)) + cos(js(1) + js(2) + js(3)) * sin(js(0)) * sin(js(4))) + d(2) * cos(js(0)) + d(3) * cos(js(0)) - a(2) * cos(js(1) + js(2)) * sin(js(0)) - a(1) * cos(js(1)) * sin(js(0)) - d(4) * sin(js(1) + js(2) + js(3)) * sin(js(0)),
+        d(4) * (cos(js(4)) * sin(js(0)) - cos(js(1) + js(2) + js(3)) * cos(js(0)) * sin(js(4))) + d(2) * sin(js(0)) + d(3) * sin(js(0)) + a(2) * cos(js(1) + js(2)) * cos(js(0)) + a(1) * cos(js(0)) * cos(js(1)) + d(4) * sin(js(1) + js(2) + js(3)) * cos(js(0)),
         0,
         0,
         0,
         1;
-    Vector6d J2(6, 1);
-    J2 << -cos(q(0)) * (a(2) * sin(q(1) + q(2)) + a(1) * sin(q(1)) + d(4) * (sin(q(1) + q(2)) * sin(q(3)) - cos(q(1) + q(2)) * cos(q(3))) - d(4) * sin(q(4)) * (cos(q(1) + q(2)) * sin(q(3)) + sin(q(1) + q(2)) * cos(q(3)))),
-        -sin(q(0)) * (a(2) * sin(q(1) + q(2)) + a(1) * sin(q(1)) + d(4) * (sin(q(1) + q(2)) * sin(q(3)) - cos(q(1) + q(2)) * cos(q(3))) - d(4) * sin(q(4)) * (cos(q(1) + q(2)) * sin(q(3)) + sin(q(1) + q(2)) * cos(q(3)))),
-        a(2) * cos(q(1) + q(2)) - (d(4) * sin(q(1) + q(2) + q(3) + q(4))) / 2 + a(1) * cos(q(1)) + (d(4) * sin(q(1) + q(2) + q(3) - q(4))) / 2 + d(4) * sin(q(1) + q(2) + q(3)),
-        sin(q(0)),
-        -cos(q(0)),
+    V6d J2(6, 1);
+    J2 << -cos(js(0)) * (a(2) * sin(js(1) + js(2)) + a(1) * sin(js(1)) + d(4) * (sin(js(1) + js(2)) * sin(js(3)) - cos(js(1) + js(2)) * cos(js(3))) - d(4) * sin(js(4)) * (cos(js(1) + js(2)) * sin(js(3)) + sin(js(1) + js(2)) * cos(js(3)))),
+        -sin(js(0)) * (a(2) * sin(js(1) + js(2)) + a(1) * sin(js(1)) + d(4) * (sin(js(1) + js(2)) * sin(js(3)) - cos(js(1) + js(2)) * cos(js(3))) - d(4) * sin(js(4)) * (cos(js(1) + js(2)) * sin(js(3)) + sin(js(1) + js(2)) * cos(js(3)))),
+        a(2) * cos(js(1) + js(2)) - (d(4) * sin(js(1) + js(2) + js(3) + js(4))) / 2 + a(1) * cos(js(1)) + (d(4) * sin(js(1) + js(2) + js(3) - js(4))) / 2 + d(4) * sin(js(1) + js(2) + js(3)),
+        sin(js(0)),
+        -cos(js(0)),
         0;
-    Vector6d J3(6, 1);
-    J3 << cos(q(0)) * (d(4) * cos(q(1) + q(2) + q(3)) - a(2) * sin(q(1) + q(2)) + d(4) * sin(q(1) + q(2) + q(3)) * sin(q(4))),
-        sin(q(0)) * (d(4) * cos(q(1) + q(2) + q(3)) - a(2) * sin(q(1) + q(2)) + d(4) * sin(q(1) + q(2) + q(3)) * sin(q(4))),
-        a(2) * cos(q(1) + q(2)) - (d(4) * sin(q(1) + q(2) + q(3) + q(4))) / 2 + (d(4) * sin(q(1) + q(2) + q(3) - q(4))) / 2 + d(4) * sin(q(1) + q(2) + q(3)),
-        sin(q(0)),
-        -cos(q(0)),
+    V6d J3(6, 1);
+    J3 << cos(js(0)) * (d(4) * cos(js(1) + js(2) + js(3)) - a(2) * sin(js(1) + js(2)) + d(4) * sin(js(1) + js(2) + js(3)) * sin(js(4))),
+        sin(js(0)) * (d(4) * cos(js(1) + js(2) + js(3)) - a(2) * sin(js(1) + js(2)) + d(4) * sin(js(1) + js(2) + js(3)) * sin(js(4))),
+        a(2) * cos(js(1) + js(2)) - (d(4) * sin(js(1) + js(2) + js(3) + js(4))) / 2 + (d(4) * sin(js(1) + js(2) + js(3) - js(4))) / 2 + d(4) * sin(js(1) + js(2) + js(3)),
+        sin(js(0)),
+        -cos(js(0)),
         0;
-    Vector6d J4(6, 1);
-    J4 << d(4) * cos(q(0)) * (cos(q(1) + q(2) + q(3)) + sin(q(1) + q(2) + q(3)) * sin(q(4))),
-        d(4) * sin(q(0)) * (cos(q(1) + q(2) + q(3)) + sin(q(1) + q(2) + q(3)) * sin(q(4))),
-        d(4) * (sin(q(1) + q(2) + q(3) - q(4)) / 2 + sin(q(1) + q(2) + q(3)) - sin(q(1) + q(2) + q(3) + q(4)) / 2),
-        sin(q(0)),
-        -cos(q(0)),
+    V6d J4(6, 1);
+    J4 << d(4) * cos(js(0)) * (cos(js(1) + js(2) + js(3)) + sin(js(1) + js(2) + js(3)) * sin(js(4))),
+        d(4) * sin(js(0)) * (cos(js(1) + js(2) + js(3)) + sin(js(1) + js(2) + js(3)) * sin(js(4))),
+        d(4) * (sin(js(1) + js(2) + js(3) - js(4)) / 2 + sin(js(1) + js(2) + js(3)) - sin(js(1) + js(2) + js(3) + js(4)) / 2),
+        sin(js(0)),
+        -cos(js(0)),
         0;
-    Vector6d J5(6, 1);
-    J5 << -d(4) * sin(q(0)) * sin(q(4)) - d(4) * cos(q(1) + q(2) + q(3)) * cos(q(0)) * cos(q(4)),
-        d(4) * cos(q(0)) * sin(q(4)) - d(4) * cos(q(1) + q(2) + q(3)) * cos(q(4)) * sin(q(0)),
-        -d(4) * (sin(q(1) + q(2) + q(3) - q(4)) / 2 + sin(q(1) + q(2) + q(3) + q(4)) / 2),
-        sin(q(1) + q(2) + q(3)) * cos(q(0)),
-        sin(q(1) + q(2) + q(3)) * sin(q(0)),
-        -cos(q(1) + q(2) + q(3));
-    Vector6d J6(6, 1);
+    V6d J5(6, 1);
+    J5 << -d(4) * sin(js(0)) * sin(js(4)) - d(4) * cos(js(1) + js(2) + js(3)) * cos(js(0)) * cos(js(4)),
+        d(4) * cos(js(0)) * sin(js(4)) - d(4) * cos(js(1) + js(2) + js(3)) * cos(js(4)) * sin(js(0)),
+        -d(4) * (sin(js(1) + js(2) + js(3) - js(4)) / 2 + sin(js(1) + js(2) + js(3) + js(4)) / 2),
+        sin(js(1) + js(2) + js(3)) * cos(js(0)),
+        sin(js(1) + js(2) + js(3)) * sin(js(0)),
+        -cos(js(1) + js(2) + js(3));
+    V6d J6(6, 1);
     J6 << 0,
         0,
         0,
-        cos(q(4)) * sin(q(0)) - cos(q(1) + q(2) + q(3)) * cos(q(0)) * sin(q(4)),
-        -cos(q(0)) * cos(q(4)) - cos(q(1) + q(2) + q(3)) * sin(q(0)) * sin(q(4)),
-        -sin(q(1) + q(2) + q(3)) * sin(q(4));
+        cos(js(4)) * sin(js(0)) - cos(js(1) + js(2) + js(3)) * cos(js(0)) * sin(js(4)),
+        -cos(js(0)) * cos(js(4)) - cos(js(1) + js(2) + js(3)) * sin(js(0)) * sin(js(4)),
+        -sin(js(1) + js(2) + js(3)) * sin(js(4));
     J << J1, J2, J3, J4, J5, J6;
     return J;
 }
 
-Eigen::Vector3d x(double t, Eigen::Vector3d initalPoint, Eigen::Vector3d finalPoint)
+/*
+    @brief compute the point in the instant t of the linear interpolation of x1 and x2
+
+    @param[in] x1 and x2: 3D points
+    @param[in] t: time
+*/
+V3d x(double t, V3d i_p, V3d f_p)
 {
-    const double nomalizedTime = t / durationTrajectory;
-    if (nomalizedTime > 1) return finalPoint;
-    else return (nomalizedTime * finalPoint) + ((1 - nomalizedTime) * initalPoint);
+    const double n_t = t / d_path;
+    if (n_t > 1) return f_p;
+    else return (n_t * f_p) + ((1 - n_t) * i_p);
 }
 
-Eigen::Quaterniond slerp(double t, Eigen::Quaterniond initialQuaternion, Eigen::Quaterniond finalQuaternion)
+/*
+    @brief compute the quaternion in the instant t of the slerp formed by q1 and q2
+
+    @param[in] q1 and q2: initial quaternion and finale quaternion
+    @param[in] t: time
+*/
+Qd slerp(double t, Qd q1, Qd q2)
 {
-    const double nomalizedTime = t / durationTrajectory;
-    if (nomalizedTime > 1) return finalQuaternion;
-    else return initialQuaternion.slerp(nomalizedTime, finalQuaternion);
+    const double n_t = t / d_path;
+    if (n_t > 1) return q2;
+    else return q1.slerp(n_t, q2);
 }
 
-Eigen::Matrix<double, 6, Eigen::Dynamic> inverseKinWithQuaternions(
-    Vector6d q, 
-    Eigen::Vector3d initialPoint,
-    Eigen::Vector3d finalPoint, 
-    Eigen::Quaterniond initialQuaternion, 
-    Eigen::Quaterniond finalQuaternion 
-)
+/*
+    @brief compute the path of the robot accoring to the initial joints values
+
+    @param[in] m_rt: robotic mesures of the joints and gripper
+    @param[in] i_p, f_p: initial and final point of the path
+    @param[in] i_q, f_q: initial and final quaternion of the path
+*/
+Path differential_inverse_kin_quaternions(V8d m_rt, V3d i_p, V3d f_p, Qd i_q, Qd f_q)
 {
-    Vector6d qk; 
-    Vector6d input;
-    Vector6d qDot;
+    /*
+        @param gs: gripper actual opening
+        @param js_k and js_dot_k: joints values in the instant k and its derivative dot in the same insatnt
+    */
+    V2d gs {m_rt(6), m_rt(7)};
+    V6d js_k, js_dot_k; 
 
-    Eigen::Matrix<double, 6, Eigen::Dynamic> trajectory;
+    /*
+        @param fv: angular and positional velocities with the correction error
+    */
+    V6d fv;
 
-    Eigen::Matrix4d transformationMatrixk;
-    Eigen::Vector3d pointk;
-    Eigen::Matrix3d rotationMatrixk;
-    Eigen::Quaterniond quaternionk;
+    /*
+        @param path: path of the robot
+    */
+    Path path;
 
-    Eigen::Vector3d angularVelocity;
-    Eigen::Quaterniond quaternionVelocity;
-    Eigen::Vector3d positionVelocity; 
+    /*
+        @param tm_k: transformation matrix in the instant k 
+    */
+    M4d tm_k;
 
-    Eigen::Quaterniond quaternionError;
-    Eigen::Matrix<double, 6, 6> jacobiank;
-    Eigen::Matrix<double, 6, 6> inverseJacobiank;
+    /*
+        @param p_k: position of the robot in the instant k
+    */
+    V3d p_k;
 
-    Eigen::Matrix3d Kp = Eigen::Matrix3d::Identity()*10;
-    Eigen::Matrix3d Kq = Eigen::Matrix3d::Identity()*10;
+    /*
+        @param rm_k: rotation matrix of the robot in the instant k
+    */
+    M3d rm_k;
 
-    trajectory = qk = q;
+    /*
+        @param q_k: quaternion related to the rotational matrix of the robot in the instant k
+    */
+    Qd q_k;
 
-    for (double t = dt; t < durationTrajectory; t += dt) 
+    /*
+        @param av_k and pv_k: angular and positional velocities of the robot in the instant k
+    */
+    V3d av_k, pv_k;
+
+    /*
+        @param qv_k: quaternion velocity related to the angular velocity of the robot in the instant k
+    */
+    Qd qv_k;
+
+    /*
+        @param qerr_k: quaternion error of the rotational path (slerp) of the robot
+    */
+    Qd qerr_k;
+
+    /*
+        @param perr_k: positional error of the linear path (x) of the robot
+    */
+    V3d perr_k;
+
+    /*
+        @param j_k and invj_k: geometric jacobian and inverse geometric jacobian of the robot in the instant k
+    */
+    Jacobian j_k, invj_k;
+
+    /*
+        @param:
+        --> Kp is for positional correction 
+        --> Kq is for quaternion correction 
+    */
+    M3d Kp, Kq;
+    Kp = Kq = M3d::Identity()*10;
+
+    /*
+        insert the starting point to the path
+    */
+    for (int i = 0; i < 6; ++i) js_k(i) = m_rt(i);
+    path = insert_new_path_instance(path, js_k, gs);
+
+    /*
+        each delta time (dt) compute the joints state to insert into the path 
+    */
+    for (double t = dt; t < d_path; t += dt) 
     {
-        transformationMatrixk = directKin(qk);
-        pointk = transformationMatrixk.block(0, 3, 3, 1);
-        rotationMatrixk = transformationMatrixk.block(0, 0, 3, 3);
-        quaternionk = rotationMatrixk;
+        /*
+            compute the direct kinematics in the instant k 
+        */
+        tm_k = direct_kin(js_k);
+        p_k = tm_k.block(0, 3, 3, 1);
+        rm_k = tm_k.block(0, 0, 3, 3);
+        q_k = rm_k;
 
-        positionVelocity = (x(t, initialPoint, finalPoint) - x(t - dt, initialPoint, finalPoint)) / dt;
-        quaternionVelocity = slerp(t + dt, initialQuaternion, finalQuaternion) * slerp(t, initialQuaternion, finalQuaternion).conjugate(); 
-	    angularVelocity = (quaternionVelocity.vec() * 2) / dt;
+        /*
+            compute the velocities in the instant k
+        */
+        pv_k = (x(t, i_p, f_p) - x(t - dt, i_p, f_p)) / dt;
+        qv_k = slerp(t + dt, i_q, f_q) * slerp(t, i_q, f_q).conjugate(); 
+	    av_k = (qv_k.vec() * 2) / dt;
 
-        jacobiank = jacobian(qk);
-        inverseJacobiank = jacobiank.completeOrthogonalDecomposition().pseudoInverse() + (0.00001 * Eigen::Matrix<double, 6, 6>::Identity());
-        if (abs(jacobiank.determinant()) < 0.0000001) ROS_INFO("Near singular configuration");
+        /* 
+            compute the jacobian and its inverse in the instant k
+        */
+        j_k = jacobian(js_k);
+        invj_k = j_k.completeOrthogonalDecomposition().pseudoInverse() + (0.001 * Eigen::Matrix<double, 6, 6>::Identity());
+        if (abs(j_k.determinant()) < 0.0000001) ROS_INFO("Near singular configuration");
 
-        quaternionError = slerp(t, initialQuaternion, finalQuaternion) * quaternionk.conjugate();
+        /*
+            compute the errors in the path
+        */
+        qerr_k = slerp(t, i_q, f_q) * q_k.conjugate();
+        perr_k = x(t, i_p, f_p) - p_k;
         
-        input << 
-            positionVelocity + (Kp * (x(t, initialPoint, finalPoint) - pointk)), 
-            angularVelocity + (Kq * quaternionError.vec());
+        /*
+            compute the vector of the velocities composition with a parameter of correction
+        */
+        fv << pv_k + (Kp * perr_k), av_k + (Kq * qerr_k.vec());
 
-        qDot = inverseJacobiank * input;
-        qk = qk + (qDot * dt);
+        /*
+            compute the joints state in the instant k
+        */
+        js_dot_k = invj_k * fv;
+        js_k = js_k + (js_dot_k * dt);
 
-        trajectory.conservativeResize(6, trajectory.cols() + 1);
-        trajectory.col(trajectory.cols() - 1) = qk;
+        /*
+            add it to the path
+        */
+        path = insert_new_path_instance(path, js_k, gs);
     }
 
-    return trajectory;
+    return path;
+}
+
+/*
+    @brief insert a new joint state into the path of the robot
+
+    @param[in] p 
+    @def path of the robot
+
+    @param[in] js
+    @def joints state to insert into the path
+
+    @param[in] gs
+    @def gripper state of the opening
+*/
+Path insert_new_path_instance(Path p, V6d js, V2d gs)
+{
+    p.conservativeResize(p.rows() + 1, p.cols());
+    p.row(p.rows() - 1) = V8d {js(0), js(1), js(2), js(3), js(4), js(5), gs(0), gs(1)};
+    return p;
+}
+
+/*
+    @brief change point in the world frame to base frame of the robot
+
+    @param[in] xw: 3D point in the world frame
+*/
+V3d world_to_base(V3d xw)
+{
+    /*
+        @param T: transformation matrix used to change frame
+    */
+    M4d T;
+
+    /*
+        @param xb: point in the base robot frame
+    */
+    V3d xb; 
+
+    /*
+        param xt: temp point used for the computation
+    */
+    V4d xt;
+
+    T << 1.0, 0.0, 0.0, 0.5,
+        0.0, -1.0, 0.0, 0.35,
+        0.0, 0.0, -1.0, 1.75,
+        0.0, 0.0, 0.0, 1.0;
+
+    xt = T.inverse() * V4d(xw(0), xw(1), xw(2), 1.0);
+    xb << xt(0), xt(1), xt(2);
+    return xb;
+}
+
+/*
+    @brief read the measures of the robot (joints, gripper)
+*/
+V8d read_robot_measures()
+{
+    boost::shared_ptr<sensor_msgs::JointState const> joints_state_msg;
+    joints_state_msg = ros::topic::waitForMessage<sensor_msgs::JointState>("/ur5/joint_states");
+    V8d js;
+    for (int i = 0; i < 8; ++i) js(i) = joints_state_msg->position[i];
+    return V8d {js(4), js(3), js(0), js(5), js(6), js(7), js(1), js(2)};
+}
+
+/*
+    @brief get from the robot measures only the joints state
+
+    @param[in] m_rt: robot measures 
+*/
+V6d arm_joint_state(V8d m_rt)
+{
+    return V6d {m_rt(0), m_rt(1), m_rt(2), m_rt(3), m_rt(4), m_rt(5)};
+}
+
+/*
+    @brief apply the path desired
+
+    @param[in] mv: desired path to apply for the robot
+*/
+void apply_movement(Path mv, ros::Publisher pub)
+{
+    ros::Rate loop_rate(10);
+    for (int i = 0; i < mv.rows(); ++i)
+    {
+        V8d js = V8d {mv(i, 0), mv(i, 1), mv(i, 2), mv(i, 3), mv(i, 4), mv(i, 5), mv(i, 6), mv(i, 7)};
+        std_msgs::Float64MultiArray jsm;
+        jsm.data.resize(8);
+        for (int j = 0; j < 8; j++)
+        {
+            jsm.data[j] = js(j);
+        }
+        pub.publish(jsm);
+        loop_rate.sleep();
+    }
 }
