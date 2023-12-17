@@ -3,6 +3,7 @@
 
 // Eigen 
 #include "Eigen/Dense"
+#include "Eigen/QR"
 
 // ROS
 #include "ros/ros.h"
@@ -274,15 +275,8 @@ InverseConfigurations inverse_kin(V3d P60, M3d R60)
 
 M3d euler_to_rotation_matrix(V3d eu)
 {
-    const double phi = eu(0);
-    const double theta = eu(1);
-    const double gamma = eu(2);
-    
-    return M3d {
-            {cos(phi)*cos(theta), cos(phi)*sin(theta)*sin(gamma)-sin(phi)*cos(gamma), cos(phi)*sin(theta)*cos(gamma)+sin(phi)*sin(gamma)},
-            {sin(phi)*cos(theta), sin(phi)*sin(theta)*sin(gamma)+cos(phi)*cos(gamma), sin(phi)*sin(theta)*cos(gamma)-cos(phi)*sin(gamma)},
-            {-sin(theta), cos(theta)*sin(gamma), cos(theta)*cos(gamma)}
-    };
+    // to do 
+    return M3d::Identity();
 }
 
 Jacobian jacobian(V6d js)
@@ -519,9 +513,68 @@ Path insert_new_path_instance(Path p, V6d js, V2d gs)
 }
 
 /*
+    @brief open the gripper of the robot
+
+    @param[in] m_rt: mesures of the robot (joints angles and gripper opening)
+*/
+Path open_gripper(V8d m_rt)
+{
+    /*
+        @param sts: number of steps to open the gripper 
+    */
+    const int sts = 30; 
+    const double dist_r = (0.3 - m_rt(6)) / sts;
+    const double dist_l = (0.3 - m_rt(7)) / sts;
+
+    Path p; 
+    V6d js = arm_joint_state(m_rt);
+    V2d gr {m_rt(6), m_rt(7)};
+
+    for (int i = 1; i <= sts; ++i)
+    {
+        gr(0) += dist_r; 
+        gr(1) += dist_l; 
+        p = insert_new_path_instance(p, js, gr);
+    }
+
+    return p;
+}
+
+/*
+    @brief close the gripper of the robot
+
+    @param[in] m_rt: mesures of the robot (joints angles and gripper opening)
+*/
+Path close_gripper(V8d m_rt)
+{
+    /*
+        @param sts: number of steps to close the gripper 
+    */
+    const int sts = 30;
+    const double closing = -0.10; 
+    const double gr_r_i = m_rt(6);
+    const double gr_l_i = m_rt(7);
+    const double dist_r = (closing - gr_r_i) / sts;
+    const double dist_l = (closing - gr_l_i) / sts;
+
+    Path p; 
+    V6d js = arm_joint_state(m_rt);
+    V2d gr {m_rt(6), m_rt(7)};
+
+    for (int i = 1; i <= sts; ++i)
+    {
+        gr(0) = gr_r_i + dist_r * i; 
+        gr(1) = gr_l_i + dist_l * i; 
+        p = insert_new_path_instance(p, js, gr);
+    }
+
+    return p;
+}
+
+/*
     @brief change point in the world frame to base frame of the robot
 
-    @param[in] xw: 3D point in the world frame
+    @param[in] xw: 3D point in the world frameFloat64MultiArray
 */
 V3d world_to_base(V3d xw)
 {
@@ -593,3 +646,37 @@ void apply_movement(Path mv, ros::Publisher pub)
         loop_rate.sleep();
     }
 }
+
+// void move_brick(V2d xy_brick, V3d eu_brick, ros::Publisher pub)
+// {
+
+// }
+
+void move(V3d f_p, V3d f_eu, ros::Publisher pub)
+{
+    V8d m_rt = read_robot_measures();
+    V6d js = arm_joint_state(m_rt);
+
+    M4d i_tm = direct_kin(js);
+    M3d i_rm= i_tm.block(0, 0, 3, 3);
+    V3d i_p = i_tm.block(0, 3, 3, 1);
+    Qd i_q(i_rm);
+
+    M3d f_rm = M3d::Identity();
+    Qd f_q(f_rm);
+
+    Path p = differential_inverse_kin_quaternions(m_rt, i_p, f_p, i_q, f_q);
+    apply_movement(p, pub);
+}
+
+// void toggle_gripper(ros::Publisher pub)
+// {
+//     m_rt = read_robot_measures();
+//     js = arm_joint_state(m_rt);
+
+//     if (m_rt(6) > 0 && m_rt(7) > 0) Path p = close_gripper(m_rt);
+//     else if (m_rt(6) <= 0 && m_rt(7) <= 0) Path p = open_gripper(M_rt);
+//     else ROS_INFO("Inconsistent opening of the gripper");
+
+//     apply_movement(p, pub);
+// }

@@ -2,7 +2,7 @@
 #define __KINEMATICS_H__ 
 
 // Eigen
-#include "../src/Eigen/Dense"
+#include "../src/motion/Eigen/Dense"
 
 // ROS
 #include "ros/ros.h"
@@ -27,7 +27,7 @@ V6d d(0.1625, 0.0, 0.0, 0.1333, 0.0997, 0.0996);
 V6d alpha(M_PI/2, 0.0, 0.0, M_PI/2, -M_PI/2, 0.0);
 
 const double dt = 0.1; 
-const double d_path = 10.0;
+const double d_path = 5.0;
 
 M4d T10f(double th1);
 M4d T21f(double th2);
@@ -48,8 +48,14 @@ M3d euler_to_rotation_matrix(V3d eu);
 Path differential_inverse_kin_quaternions(V8d m_rt, V3d i_p, V3d f_p, Qd i_q, Qd f_q);
 Path insert_new_path_instance(Path p, V6d js, V2d gs);
 
+Path open_gripper(V8d m_rt);
+Path close_gripper(V8d m_rt);
+
 V8d read_robot_measures();
 V6d arm_joint_state(V8d m_rt);
 void apply_movement(Path mv, ros::Publisher pub);
+
+// void move_brick(V2d xy_brick, V3d eu_brick, ros::Publisher pub)
+void move(V3d f_p, V3d f_eu, ros::Publisher pub);
 
 #endif
