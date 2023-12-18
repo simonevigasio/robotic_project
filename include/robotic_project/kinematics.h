@@ -27,7 +27,7 @@ V6d d(0.1625, 0.0, 0.0, 0.1333, 0.0997, 0.0996);
 V6d alpha(M_PI/2, 0.0, 0.0, M_PI/2, -M_PI/2, 0.0);
 
 const double dt = 0.1; 
-const double d_path = 5.0;
+const double d_path = 10.0;
 
 M4d T10f(double th1);
 M4d T21f(double th2);

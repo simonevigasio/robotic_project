@@ -4,6 +4,7 @@
 // Eigen 
 #include "Eigen/Dense"
 #include "Eigen/QR"
+#include "Eigen/Geometry"
 
 // ROS
 #include "ros/ros.h"
@@ -275,8 +276,9 @@ InverseConfigurations inverse_kin(V3d P60, M3d R60)
 
 M3d euler_to_rotation_matrix(V3d eu)
 {
-    // to do 
-    return M3d::Identity();
+    M3d m;
+    m = Eigen::AngleAxisd(eu(0), V3d::UnitX()) * Eigen::AngleAxisd(eu(1), V3d::UnitY()) * Eigen::AngleAxisd(eu(2), V3d::UnitZ());
+    return m;
 }
 
 Jacobian jacobian(V6d js)
@@ -522,7 +524,7 @@ Path open_gripper(V8d m_rt)
     /*
         @param sts: number of steps to open the gripper 
     */
-    const int sts = 30; 
+    const int sts = 50; 
     const double dist_r = (0.3 - m_rt(6)) / sts;
     const double dist_l = (0.3 - m_rt(7)) / sts;
 
@@ -550,7 +552,7 @@ Path close_gripper(V8d m_rt)
     /*
         @param sts: number of steps to close the gripper 
     */
-    const int sts = 30;
+    const int sts = 50;
     const double closing = -0.10; 
     const double gr_r_i = m_rt(6);
     const double gr_l_i = m_rt(7);
@@ -662,7 +664,10 @@ void move(V3d f_p, V3d f_eu, ros::Publisher pub)
     V3d i_p = i_tm.block(0, 3, 3, 1);
     Qd i_q(i_rm);
 
-    M3d f_rm = M3d::Identity();
+    M3d f_rm = euler_to_rotation_matrix(f_eu);
+
+    std::cout << "eu to rm = \n" <<  f_rm << std::endl;
+
     Qd f_q(f_rm);
 
     Path p = differential_inverse_kin_quaternions(m_rt, i_p, f_p, i_q, f_q);

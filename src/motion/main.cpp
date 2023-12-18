@@ -35,7 +35,7 @@ int main(int argc, char **argv)
         V3d p_f = world_to_base(p_f_w);
         p_f(2) = 0.5;
 
-        move(p_f, V3d::Identity(), pub);
+        move(p_f, V3d::Zero(), pub);
 
         V8d m = read_robot_measures();
         V6d js = arm_joint_state(m);
@@ -86,7 +86,7 @@ int main(int argc, char **argv)
         rm = tm.block(0, 0, 3, 3);
         p_i = tm.block(0, 3, 3, 1);
 
-        p_f << p_i(0) - 0.3, p_i(1), p_i(2);
+        p_f << p_i(0) - 0.30, p_i(1), p_i(2);
         q_i = rm;
 
         pt = differential_inverse_kin_quaternions(m, p_i, p_f, q_i, q_f);
@@ -149,7 +149,6 @@ int main(int argc, char **argv)
         js = arm_joint_state(m);
 
         std::cout << "m = \n" << m << std::endl;
-
         std::cout << "END" << std::endl;
     }
 
