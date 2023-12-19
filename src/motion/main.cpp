@@ -20,139 +20,88 @@ int main(int argc, char **argv)
 
     ros::NodeHandle node_handler;
     ros::Publisher pub = node_handler.advertise<std_msgs::Float64MultiArray>("/ur5/joint_group_pos_controller/command", 10);
-
-    // Service 
-
+    
+    /*
+        call vision service to obtain the position and orientation of the brick
+    */
     ros::ServiceClient service_client = node_handler.serviceClient<robotic_project::ObtainBrickPose>("obtain_brick_pose");
-
     robotic_project::ObtainBrickPose srv;
-
     if (service_client.call(srv))
     {
+        /*
+            log the location given from the vision service
+        */
         std::cout << srv.response.p.position << std::endl;
 
-        V3d p_f_w {srv.response.p.position.x, srv.response.p.position.y, srv.response.p.position.z};
-        V3d p_f = world_to_base(p_f_w);
-        p_f(2) = 0.5;
+        /* 
+            open gripper
+        */
+        toggle_gripper(pub, true);
 
-        move(p_f, V3d::Zero(), pub);
+        /*
+            compute the point based on the base frame
+        */
+        V3d wp;
+        wp << srv.response.p.position.x, srv.response.p.position.y, srv.response.p.position.z;
+        V3d bp = world_to_base(wp);
 
-        V8d m = read_robot_measures();
-        V6d js = arm_joint_state(m);
+        /*
+            place the arm above the brick
+        */
+        bp(2) = 0.50;
+        move_end_effector(bp, V3d::Zero(), pub);
 
-        std::cout << "expected point = \n" << p_f << std::endl;
-        std::cout << "actual direct = \n" << direct_kin(js) << std::endl;
+        /*
+            move downwards to grasp the brick
+        */
+        bp(2) = 0.72;
+        move_end_effector(bp, V3d::Zero(), pub);
 
-        Path pt = open_gripper(m);
-        apply_movement(pt, pub);
-        m = read_robot_measures();
+        /*
+            close gripper
+        */
+        toggle_gripper(pub);
 
-        M4d tm = direct_kin(js);
-        M3d rm = tm.block(0, 0, 3, 3);
-        V3d p_i = tm.block(0, 3, 3, 1);
+        /*
+            move upwards
+        */
+        bp(2) = 0.50;
+        move_end_effector(bp, V3d::Zero(), pub);
 
-        p_f << p_i(0), p_i(1), 0.72;
-        Qd q_i(rm); 
-        Qd q_f = q_i;
+        /*
+            move 30cm left respect the robot
+        */
+        bp(0) = bp(0) - 0.30;
+        move_end_effector(bp, V3d::Zero(), pub);
 
-        pt = differential_inverse_kin_quaternions(m, p_i, p_f, q_i, q_f);
-        apply_movement(pt, pub);
-        m = read_robot_measures();
+        /*
+            move downwards to leave the brick
+        */
+        bp(2) = 0.72;
+        move_end_effector(bp, V3d::Zero(), pub);
 
-        std::cout << "m = \n" << m << std::endl;
+        /*
+            open gripper
+        */
+        toggle_gripper(pub);
 
-        pt = close_gripper(m);
-        apply_movement(pt, pub);
-        m = read_robot_measures();
-        js = arm_joint_state(m);
+        /*
+            move upwards
+        */
+        bp(2) = 0.50;
+        move_end_effector(bp, V3d::Zero(), pub);
 
-        std::cout << "m = \n" << m << std::endl;
+        /*
+            move 30cm right respect the robot
+        */
+        bp(0) = bp(0) + 0.30;
+        move_end_effector(bp, V3d::Zero(), pub);
 
-        tm = direct_kin(js);
-        rm = tm.block(0, 0, 3, 3);
-        p_i = tm.block(0, 3, 3, 1);
-
-        p_f << p_i(0), p_i(1), 0.50;
-        q_i = rm; 
-
-        pt = differential_inverse_kin_quaternions(m, p_i, p_f, q_i, q_f);
-        apply_movement(pt, pub);
-        m = read_robot_measures();
-        js = arm_joint_state(m);
-
-        std::cout << "m = \n" << m << std::endl;
-
-        tm = direct_kin(js);
-        rm = tm.block(0, 0, 3, 3);
-        p_i = tm.block(0, 3, 3, 1);
-
-        p_f << p_i(0) - 0.30, p_i(1), p_i(2);
-        q_i = rm;
-
-        pt = differential_inverse_kin_quaternions(m, p_i, p_f, q_i, q_f);
-        apply_movement(pt, pub);
-        m = read_robot_measures();
-        js = arm_joint_state(m);
-
-        std::cout << "m = \n" << m << std::endl;
-
-        tm = direct_kin(js);
-        rm = tm.block(0, 0, 3, 3);
-        p_i = tm.block(0, 3, 3, 1);
-
-        p_f << p_i(0), p_i(1), 0.72;
-        q_i = rm;
-
-        pt = differential_inverse_kin_quaternions(m, p_i, p_f, q_i, q_f);
-        apply_movement(pt, pub);
-        m = read_robot_measures();
-        js = arm_joint_state(m);
-
-        std::cout << "m = \n" << m << std::endl;
-
-        pt = open_gripper(m);
-        apply_movement(pt, pub);
-        m = read_robot_measures();
-        js = arm_joint_state(m);
-
-        tm = direct_kin(js);
-        rm = tm.block(0, 0, 3, 3);
-        p_i = tm.block(0, 3, 3, 1);
-
-        p_f << p_i(0), p_i(1), 0.50;
-        q_i = rm;
-
-        pt = differential_inverse_kin_quaternions(m, p_i, p_f, q_i, q_f);
-        apply_movement(pt, pub);
-        m = read_robot_measures();
-        js = arm_joint_state(m);
-
-        std::cout << "m = \n" << m << std::endl;
-
-        pt = close_gripper(m);
-        apply_movement(pt, pub);
-        m = read_robot_measures();
-        js = arm_joint_state(m);
-
-        std::cout << "m = \n" << m << std::endl;
-
-        tm = direct_kin(js);
-        rm = tm.block(0, 0, 3, 3);
-        p_i = tm.block(0, 3, 3, 1);
-
-        p_f << p_i(0) + 0.3, p_i(1), p_i(2);
-        q_i = rm;
-
-        pt = differential_inverse_kin_quaternions(m, p_i, p_f, q_i, q_f);
-        apply_movement(pt, pub);
-        m = read_robot_measures();
-        js = arm_joint_state(m);
-
-        std::cout << "m = \n" << m << std::endl;
-        std::cout << "END" << std::endl;
+        /*
+            close gripper
+        */
+        toggle_gripper(pub);
     }
-
-   
 
     ros::spin();
 }

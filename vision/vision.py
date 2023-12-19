@@ -22,6 +22,7 @@ from torchvision.transforms import functional as F
 
 model = None
 center_point = None
+ready = False
 
 def handle_obtain_brick_pose(req):
     # to compute with the model
@@ -91,8 +92,10 @@ def detection(msg: Image) -> None:
     
     global center_point
     center_point = np.mean(data_world, axis=0)
-    print("Ready to give the brick pose.")
 
+    global ready
+    ready = True
+    
 def obtain_brick_pose_server():
     rospy.init_node('vision_node')
 
@@ -108,7 +111,12 @@ def obtain_brick_pose_server():
     point_cloud2_msg = rospy.wait_for_message("/ur5/zed_node/point_cloud/cloud_registered", PointCloud2)
 
     s = rospy.Service('obtain_brick_pose', ObtainBrickPose, handle_obtain_brick_pose)
-    
+
+    global ready 
+    while (not ready): None
+
+    print("the vision is ready to deliver the block position.")
+
     rospy.spin()
 
 if __name__ ==  '__main__':

@@ -52,10 +52,10 @@ Path open_gripper(V8d m_rt);
 Path close_gripper(V8d m_rt);
 
 V8d read_robot_measures();
-V6d arm_joint_state(V8d m_rt);
-void apply_movement(Path mv, ros::Publisher pub);
+V6d get_joint_state(V8d m_rt);
+void move(Path mv, ros::Publisher pub);
 
-// void move_brick(V2d xy_brick, V3d eu_brick, ros::Publisher pub)
-void move(V3d f_p, V3d f_eu, ros::Publisher pub);
+void move_end_effector(V3d fp, V3d feu, ros::Publisher pub);
+void toggle_gripper(ros::Publisher pub, bool force_opening = false);
 
 #endif

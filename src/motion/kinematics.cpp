@@ -274,6 +274,7 @@ InverseConfigurations inverse_kin(V3d P60, M3d R60)
     return conf;
 }
 
+// to fix
 M3d euler_to_rotation_matrix(V3d eu)
 {
     M3d m;
@@ -360,78 +361,77 @@ Qd slerp(double t, Qd q1, Qd q2)
 /*
     @brief compute the path of the robot accoring to the initial joints values
 
-    @param[in] m_rt: robotic mesures of the joints and gripper
+    @param[in] mr: robotic mesures of the joints and gripper
     @param[in] i_p, f_p: initial and final point of the path
     @param[in] i_q, f_q: initial and final quaternion of the path
 */
-Path differential_inverse_kin_quaternions(V8d m_rt, V3d i_p, V3d f_p, Qd i_q, Qd f_q)
+Path differential_inverse_kin_quaternions(V8d mr, V3d i_p, V3d f_p, Qd i_q, Qd f_q)
 {
     /*
-        @param gs: gripper actual opening
-        @param js_k and js_dot_k: joints values in the instant k and its derivative dot in the same insatnt
+        gs is the gripper actual opening
+        js_k and ks_k_dot are joints values in the instant k and its derivative dot in the same insatnt
     */
-    V2d gs {m_rt(6), m_rt(7)};
+    V2d gs {mr(6), mr(7)};
     V6d js_k, js_dot_k; 
 
     /*
-        @param fv: angular and positional velocities with the correction error
+        angular and positional velocities combined with the correction error
     */
     V6d fv;
 
     /*
-        @param path: path of the robot
+        path of the robot
     */
     Path path;
 
     /*
-        @param tm_k: transformation matrix in the instant k 
+        transformation matrix in the instant k 
     */
     M4d tm_k;
 
     /*
-        @param p_k: position of the robot in the instant k
+        position of the robot in the instant k
     */
     V3d p_k;
 
     /*
-        @param rm_k: rotation matrix of the robot in the instant k
+        rotation matrix of the robot in the instant k
     */
     M3d rm_k;
 
     /*
-        @param q_k: quaternion related to the rotational matrix of the robot in the instant k
+        quaternion related to the rotational matrix of the robot in the instant k
     */
     Qd q_k;
 
     /*
-        @param av_k and pv_k: angular and positional velocities of the robot in the instant k
+        angular and positional velocities of the robot in the instant k
     */
     V3d av_k, pv_k;
 
     /*
-        @param qv_k: quaternion velocity related to the angular velocity of the robot in the instant k
+        quaternion velocity related to the angular velocity of the robot in the instant k
     */
     Qd qv_k;
 
     /*
-        @param qerr_k: quaternion error of the rotational path (slerp) of the robot
+        quaternion error of the rotational path (slerp) of the robot
     */
     Qd qerr_k;
 
     /*
-        @param perr_k: positional error of the linear path (x) of the robot
+        positional error of the linear path (x) of the robot
     */
     V3d perr_k;
 
     /*
-        @param j_k and invj_k: geometric jacobian and inverse geometric jacobian of the robot in the instant k
+        geometric jacobian and inverse geometric jacobian of the robot in the instant k
     */
     Jacobian j_k, invj_k;
 
     /*
-        @param:
-        --> Kp is for positional correction 
-        --> Kq is for quaternion correction 
+        Kp is for positional correction 
+        Kq is for quaternion correction 
     */
     M3d Kp, Kq;
     Kp = Kq = M3d::Identity()*10;
@@ -439,7 +439,7 @@ Path differential_inverse_kin_quaternions(V8d m_rt, V3d i_p, V3d f_p, Qd i_q, Qd
     /*
         insert the starting point to the path
     */
-    for (int i = 0; i < 6; ++i) js_k(i) = m_rt(i);
+    for (int i = 0; i < 6; ++i) js_k(i) = mr(i);
     path = insert_new_path_instance(path, js_k, gs);
 
     /*
@@ -515,173 +515,219 @@ Path insert_new_path_instance(Path p, V6d js, V2d gs)
 }
 
 /*
-    @brief open the gripper of the robot
-
-    @param[in] m_rt: mesures of the robot (joints angles and gripper opening)
-*/
-Path open_gripper(V8d m_rt)
-{
-    /*
-        @param sts: number of steps to open the gripper 
-    */
-    const int sts = 50; 
-    const double dist_r = (0.3 - m_rt(6)) / sts;
-    const double dist_l = (0.3 - m_rt(7)) / sts;
-
-    Path p; 
-    V6d js = arm_joint_state(m_rt);
-    V2d gr {m_rt(6), m_rt(7)};
-
-    for (int i = 1; i <= sts; ++i)
-    {
-        gr(0) += dist_r; 
-        gr(1) += dist_l; 
-        p = insert_new_path_instance(p, js, gr);
-    }
-
-    return p;
-}
-
-/*
-    @brief close the gripper of the robot
-
-    @param[in] m_rt: mesures of the robot (joints angles and gripper opening)
-*/
-Path close_gripper(V8d m_rt)
-{
-    /*
-        @param sts: number of steps to close the gripper 
-    */
-    const int sts = 50;
-    const double closing = -0.10; 
-    const double gr_r_i = m_rt(6);
-    const double gr_l_i = m_rt(7);
-    const double dist_r = (closing - gr_r_i) / sts;
-    const double dist_l = (closing - gr_l_i) / sts;
-
-    Path p; 
-    V6d js = arm_joint_state(m_rt);
-    V2d gr {m_rt(6), m_rt(7)};
-
-    for (int i = 1; i <= sts; ++i)
-    {
-        gr(0) = gr_r_i + dist_r * i; 
-        gr(1) = gr_l_i + dist_l * i; 
-        p = insert_new_path_instance(p, js, gr);
-    }
-
-    return p;
-}
-
-/*
-    @brief change point in the world frame to base frame of the robot
-
-    @param[in] xw: 3D point in the world frameFloat64MultiArray
-*/
-V3d world_to_base(V3d xw)
-{
-    /*
-        @param T: transformation matrix used to change frame
-    */
-    M4d T;
-
-    /*
-        @param xb: point in the base robot frame
-    */
-    V3d xb; 
-
-    /*
-        param xt: temp point used for the computation
-    */
-    V4d xt;
-
-    T << 1.0, 0.0, 0.0, 0.5,
-        0.0, -1.0, 0.0, 0.35,
-        0.0, 0.0, -1.0, 1.75,
-        0.0, 0.0, 0.0, 1.0;
-
-    xt = T.inverse() * V4d(xw(0), xw(1), xw(2), 1.0);
-    xb << xt(0), xt(1), xt(2);
-    return xb;
-}
-
-/*
     @brief read the measures of the robot (joints, gripper)
 */
 V8d read_robot_measures()
 {
-    boost::shared_ptr<sensor_msgs::JointState const> joints_state_msg;
-    joints_state_msg = ros::topic::waitForMessage<sensor_msgs::JointState>("/ur5/joint_states");
-    V8d js;
-    for (int i = 0; i < 8; ++i) js(i) = joints_state_msg->position[i];
-    return V8d {js(4), js(3), js(0), js(5), js(6), js(7), js(1), js(2)};
+    /*
+        read and store the measures of the joints and the gripper inside the mr vector
+    */
+    boost::shared_ptr<sensor_msgs::JointState const> mr;
+    mr = ros::topic::waitForMessage<sensor_msgs::JointState>("/ur5/joint_states");
+
+    /*
+        save and arrange the data given in the mr vector into the m vector
+    */
+    V8d m;
+    for (int i = 0; i < 8; ++i) m(i) = mr->position[i];
+    return V8d {m(4), m(3), m(0), m(5), m(6), m(7), m(1), m(2)};
 }
 
 /*
     @brief get from the robot measures only the joints state
 
-    @param[in] m_rt: robot measures 
+    @param[in] mr: robot measures 
 */
-V6d arm_joint_state(V8d m_rt)
+V6d get_joint_state(V8d mr)
 {
-    return V6d {m_rt(0), m_rt(1), m_rt(2), m_rt(3), m_rt(4), m_rt(5)};
+    /*
+        catch only the values representing the joint radians
+    */
+    return V6d {mr(0), mr(1), mr(2), mr(3), mr(4), mr(5)};
+}
+
+/*
+    @brief change point in the world frame to base frame of the robot
+
+    @param[in] xw: 3D point in the world frame
+*/
+V3d world_to_base(V3d xw)
+{
+    /*
+        transformation matrix used to change frame
+    */
+    M4d T;
+
+    /*
+        point in the base robot frame
+    */
+    V3d xb; 
+
+    /*
+        temp point used for the computation
+    */
+    V4d xt;
+
+    /*
+        initialize the T matrix 
+    */
+    T << 1.0, 0.0, 0.0, 0.5,
+        0.0, -1.0, 0.0, 0.35,
+        0.0, 0.0, -1.0, 1.75,
+        0.0, 0.0, 0.0, 1.0;
+
+    /*
+        compute the word position in the xt vector with 4 items
+    */
+    xt = T.inverse() * V4d(xw(0), xw(1), xw(2), 1.0);
+
+    /*
+        extract the last element of xt and save the rest into xb vector
+    */
+    xb << xt(0), xt(1), xt(2);
+    return xb;
 }
 
 /*
     @brief apply the path desired
 
     @param[in] mv: desired path to apply for the robot
+    @param[in] pub: ros publisher 
 */
-void apply_movement(Path mv, ros::Publisher pub)
+void move(Path mv, ros::Publisher pub)
 {
+    /*
+        frequency of how quickly the data are delivered to the robot in Hz
+    */
     ros::Rate loop_rate(10);
+
+    /*
+        iterate the each row of the movement
+    */
     for (int i = 0; i < mv.rows(); ++i)
     {
-        V8d js = V8d {mv(i, 0), mv(i, 1), mv(i, 2), mv(i, 3), mv(i, 4), mv(i, 5), mv(i, 6), mv(i, 7)};
-        std_msgs::Float64MultiArray jsm;
-        jsm.data.resize(8);
-        for (int j = 0; j < 8; j++)
-        {
-            jsm.data[j] = js(j);
-        }
-        pub.publish(jsm);
+        /*
+            save the joint and gripper values into a vector 
+        */
+        V8d joint_state;
+        joint_state << mv(i, 0), mv(i, 1), mv(i, 2), mv(i, 3), mv(i, 4), mv(i, 5), mv(i, 6), mv(i, 7);
+
+        /*
+            feed the message to deliver to the robot with the values within the joint_state vector
+        */
+        std_msgs::Float64MultiArray joint_statem;
+        joint_statem.data.resize(8);
+        for (int j = 0; j < 8; j++) joint_statem.data[j] = joint_state(j);
+
+        /*
+            send the message
+        */
+        pub.publish(joint_statem);
         loop_rate.sleep();
     }
 }
 
-// void move_brick(V2d xy_brick, V3d eu_brick, ros::Publisher pub)
-// {
+/*
+    @brief move the robot from its initial position to the given final confinguration
 
-// }
-
-void move(V3d f_p, V3d f_eu, ros::Publisher pub)
+    @param[in] fp: final position
+    @param[in] feu: final euler angles
+    @param[in] pub: ros publisher
+*/
+void move_end_effector(V3d fp, V3d feu, ros::Publisher pub)
 {
-    V8d m_rt = read_robot_measures();
-    V6d js = arm_joint_state(m_rt);
+    /*
+        obtain the actual configuration of the robot 
+    */
+    V8d mr = read_robot_measures();
+    V6d joint_state = get_joint_state(mr);
 
-    M4d i_tm = direct_kin(js);
-    M3d i_rm= i_tm.block(0, 0, 3, 3);
-    V3d i_p = i_tm.block(0, 3, 3, 1);
-    Qd i_q(i_rm);
+    /*
+        compute the initial position 
+    */
+    M4d tm = direct_kin(joint_state);
+    M3d irm= tm.block(0, 0, 3, 3);
+    V3d ip = tm.block(0, 3, 3, 1);
+    Qd iq(irm);
 
-    M3d f_rm = euler_to_rotation_matrix(f_eu);
+    std::cout << tm << std::endl;
 
-    std::cout << "eu to rm = \n" <<  f_rm << std::endl;
+    /*
+        compute the final quaternion
+    */
+    M3d frm = euler_to_rotation_matrix(feu);
+    Qd fq(frm);
 
-    Qd f_q(f_rm);
+    std::cout << frm << std::endl;
 
-    Path p = differential_inverse_kin_quaternions(m_rt, i_p, f_p, i_q, f_q);
-    apply_movement(p, pub);
+    /*
+        perform the movement
+    */
+    Path p = differential_inverse_kin_quaternions(mr, ip, fp, iq, fq);
+    move(p, pub);
 }
 
-// void toggle_gripper(ros::Publisher pub)
-// {
-//     m_rt = read_robot_measures();
-//     js = arm_joint_state(m_rt);
+/*
+    @brief open/close the gripper
 
-//     if (m_rt(6) > 0 && m_rt(7) > 0) Path p = close_gripper(m_rt);
-//     else if (m_rt(6) <= 0 && m_rt(7) <= 0) Path p = open_gripper(M_rt);
-//     else ROS_INFO("Inconsistent opening of the gripper");
+    @param[in] pub: ros publisher
+*/
+void toggle_gripper(ros::Publisher pub, bool force_opening)
+{
+    /*
+        path, joint state and gripper values
+    */
+    Path p; 
+    V8d mr = read_robot_measures();
+    V6d joint_state = get_joint_state(mr);
+    V2d gr {mr(6), mr(7)};
 
-//     apply_movement(p, pub);
-// }
+    /*
+        number of steps to toggle the gripper 
+    */
+    const int steps = 50;
+
+    /*
+        measure of how much the gripper will close
+    */
+    const double closing = -0.20; 
+
+    /*
+        measure of how much the gripper will open
+    */
+    const double opening = 0.30;
+
+    /*
+        gripper right and left side initial position
+    */
+    const double grr = gr(0);
+    const double grl = gr(1);
+
+    /*
+        compute the final value of the gripper
+    */
+    double toggle;
+    if (grr > 0 && grl > 0) toggle = closing; else toggle = opening;
+    if (force_opening) toggle = opening;
+
+    /*
+        assign the frame distances for each gripper side
+    */
+    const double distr = (toggle - grr) / steps;
+    const double distl = (toggle - grl) / steps;
+
+    /*
+        compute the path divided into steps to toggle the gripper
+    */
+    for (int i = 1; i <= steps; ++i)
+    {
+        gr(0) = grr + distr * i; 
+        gr(1) = grl + distl * i; 
+        p = insert_new_path_instance(p, joint_state, gr);
+    }
+
+    /*
+        move the gripper
+    */
+    move(p, pub);
+}
