@@ -20,6 +20,8 @@ from pathlib import Path
 from matplotlib import pyplot as plt
 from torchvision.transforms import functional as F
 
+import open3d as o3d
+
 model = None
 center_point = None
 ready = False
@@ -52,7 +54,7 @@ def detection(msg: Image) -> None:
         y2 = int(bbox['ymax'])
         lego_list.append((name, conf, x1, y1, x2, y2))
 
-    sliceBox = slice(y1, y2) , slice(x1,  x2)
+    #sliceBox = slice(y1, y2) , slice(x1,  x2)
     #points = img[sliceBox]
 
     points_2D = []

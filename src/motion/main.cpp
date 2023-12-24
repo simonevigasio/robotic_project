@@ -41,66 +41,26 @@ int main(int argc, char **argv)
         /*
             compute the point based on the base frame
         */
-        V3d wp;
-        wp << srv.response.p.position.x, srv.response.p.position.y, srv.response.p.position.z;
-        V3d bp = world_to_base(wp);
+        V3d world_brick_position;
+        world_brick_position << srv.response.p.position.x, srv.response.p.position.y, srv.response.p.position.z;
+        world_brick_position << 0.3, 0.3, 0.5;
+        V3d base_brick_position = world_to_base(world_brick_position);
+        base_brick_position(2) = 0.5;
 
-        /*
-            place the arm above the brick
-        */
-        bp(2) = 0.50;
-        move_end_effector(bp, V3d::Zero(), pub);
+        // V6d joint_state = get_joint_state(read_robot_measures());
+        // M4d t = direct_kin(joint_state);
+        // V3d p = t.block(0, 3, 3, 1);
+        // M3d r = t.block(0, 0, 3, 3);
+        // Qd q(r), fq(M3d::Identity());
 
-        /*
-            move downwards to grasp the brick
-        */
-        bp(2) = 0.72;
-        move_end_effector(bp, V3d::Zero(), pub);
+        // Path path = differential_inverse_kin_quaternions(read_robot_measures(), p, base_brick_position, q, fq);
+        // move(path, pub);
 
-        /*
-            close gripper
-        */
-        toggle_gripper(pub);
+        // move_end_effector(base_brick_position, M3d::Identity(), pub);
 
-        /*
-            move upwards
-        */
-        bp(2) = 0.50;
-        move_end_effector(bp, V3d::Zero(), pub);
+        std::cout << read_robot_measures() << std::endl;
 
-        /*
-            move 30cm left respect the robot
-        */
-        bp(0) = bp(0) - 0.30;
-        move_end_effector(bp, V3d::Zero(), pub);
-
-        /*
-            move downwards to leave the brick
-        */
-        bp(2) = 0.72;
-        move_end_effector(bp, V3d::Zero(), pub);
-
-        /*
-            open gripper
-        */
-        toggle_gripper(pub);
-
-        /*
-            move upwards
-        */
-        bp(2) = 0.50;
-        move_end_effector(bp, V3d::Zero(), pub);
-
-        /*
-            move 30cm right respect the robot
-        */
-        bp(0) = bp(0) + 0.30;
-        move_end_effector(bp, V3d::Zero(), pub);
-
-        /*
-            close gripper
-        */
-        toggle_gripper(pub);
+        ROS_INFO("end");
     }
 
     ros::spin();

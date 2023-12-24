@@ -274,14 +274,6 @@ InverseConfigurations inverse_kin(V3d P60, M3d R60)
     return conf;
 }
 
-// to fix
-M3d euler_to_rotation_matrix(V3d eu)
-{
-    M3d m;
-    m = Eigen::AngleAxisd(eu(0), V3d::UnitX()) * Eigen::AngleAxisd(eu(1), V3d::UnitY()) * Eigen::AngleAxisd(eu(2), V3d::UnitZ());
-    return m;
-}
-
 Jacobian jacobian(V6d js)
 {
     Jacobian J;
@@ -338,11 +330,11 @@ Jacobian jacobian(V6d js)
     @param[in] x1 and x2: 3D points
     @param[in] t: time
 */
-V3d x(double t, V3d i_p, V3d f_p)
+V3d x(double t, V3d x1, V3d x2)
 {
     const double n_t = t / d_path;
-    if (n_t > 1) return f_p;
-    else return (n_t * f_p) + ((1 - n_t) * i_p);
+    if (n_t > 1) return x2;
+    else return (n_t * x2) + ((1 - n_t) * x1);
 }
 
 /*
@@ -434,7 +426,8 @@ Path differential_inverse_kin_quaternions(V8d mr, V3d i_p, V3d f_p, Qd i_q, Qd f
         Kq is for quaternion correction 
     */
     M3d Kp, Kq;
-    Kp = Kq = M3d::Identity()*10;
+    Kp = M3d::Identity() * 10;
+    Kq = M3d::Identity() * 1;
 
     /*
         insert the starting point to the path
@@ -466,9 +459,9 @@ Path differential_inverse_kin_quaternions(V8d mr, V3d i_p, V3d f_p, Qd i_q, Qd f
             compute the jacobian and its inverse in the instant k
         */
         j_k = jacobian(js_k);
-        invj_k = j_k.completeOrthogonalDecomposition().pseudoInverse() + (0.001 * Eigen::Matrix<double, 6, 6>::Identity());
-        if (abs(j_k.determinant()) < 0.0000001) ROS_INFO("Near singular configuration");
-
+        invj_k = (j_k.transpose() * j_k + Jacobian::Identity() * 0.001).inverse() * j_k.transpose();
+        if (abs(j_k.determinant()) < 0.00001) ROS_INFO("Near singular configuration");
+            
         /*
             compute the errors in the path
         */
@@ -628,43 +621,140 @@ void move(Path mv, ros::Publisher pub)
 }
 
 /*
+    @brief give a sequence of points in the space to rich the final position in safe way
+
+    @param[in] final_position: final position for the robot
+*/
+Trajectory build_trajectory(V3d final_position)
+{  
+    int stationary_points_num = 8;
+    Eigen::Matrix<double, 8, 3> stationary_points {
+        {0.3, 0.1, 0.5}, {0.4, 0, 0.5},
+        {0.3, -0.3, 0.5}, {0, -0.4, 0.5},
+        {-0.3, -0.3, 0.5}, {-0.4, 0, 0.5},
+        {-0.3, 0.1, 0.5}, {0, 0.1, 0.5}
+    };
+
+    V6d joint_state = get_joint_state(read_robot_measures());
+    M4d transformation_matrix = direct_kin(joint_state);
+    V3d actual_position = transformation_matrix.block(0, 3, 3, 1);
+
+    int starting_position = -1;
+    double min_distance = -1;
+    double possible_min_distance;
+    for (int i = 0; i < stationary_points_num; ++i)
+    {
+        possible_min_distance = abs(stationary_points(i, 0) - actual_position(0));
+        possible_min_distance = possible_min_distance + abs(stationary_points(i, 1) - actual_position(1));
+        if (min_distance == -1 || possible_min_distance < min_distance) 
+        {
+            min_distance = possible_min_distance; 
+            starting_position = i;
+        }
+    }
+
+    int ending_position = -1;
+    min_distance = -1;
+    for (int i = 0; i < stationary_points_num; ++i)
+    {
+        possible_min_distance = abs(stationary_points(i, 0) - final_position(0));
+        possible_min_distance = possible_min_distance + abs(stationary_points(i, 1) - final_position(1));
+        if (min_distance == -1 || possible_min_distance < min_distance)
+        {
+            min_distance = possible_min_distance; 
+            ending_position = i;
+        }
+    }
+
+    bool trajectory_built = false;
+    int i = starting_position;
+
+    Trajectory trajectory;
+
+    do
+    {
+        trajectory.conservativeResize(trajectory.rows() + 1, trajectory.cols());
+        trajectory.row(trajectory.rows() - 1) = V3d {stationary_points(i, 0), stationary_points(i, 1), stationary_points(i, 2)};
+        if (i == ending_position) trajectory_built = true;
+        if (ending_position < starting_position) i = i - 1; else i = i + 1;
+    }
+    while (!trajectory_built);
+
+    trajectory.conservativeResize(trajectory.rows() + 1, trajectory.cols());
+    trajectory.row(trajectory.rows() - 1) = V3d {final_position(0), final_position(1), final_position(2)};
+
+    return trajectory;
+}
+
+/*
     @brief move the robot from its initial position to the given final confinguration
 
     @param[in] fp: final position
     @param[in] feu: final euler angles
     @param[in] pub: ros publisher
 */
-void move_end_effector(V3d fp, V3d feu, ros::Publisher pub)
+void move_end_effector(V3d final_position, M3d final_rotation_matrix, ros::Publisher pub)
 {
-    /*
-        obtain the actual configuration of the robot 
-    */
-    V8d mr = read_robot_measures();
-    V6d joint_state = get_joint_state(mr);
+    ROS_INFO("move end-effector");
 
     /*
-        compute the initial position 
+        compute the trajectory
     */
-    M4d tm = direct_kin(joint_state);
-    M3d irm= tm.block(0, 0, 3, 3);
-    V3d ip = tm.block(0, 3, 3, 1);
-    Qd iq(irm);
+    Trajectory trajectory = build_trajectory(final_position);
+    const double time_frame = d_path / trajectory.rows();
 
-    std::cout << tm << std::endl;
+    std::cout << "trajectory =\n" << trajectory << std::endl;
 
     /*
         compute the final quaternion
     */
-    M3d frm = euler_to_rotation_matrix(feu);
-    Qd fq(frm);
+    Qd final_quaternion(final_rotation_matrix);
 
-    std::cout << frm << std::endl;
+    /*
+        robot measures
+    */
+    V8d robot_measures = read_robot_measures();
+    V6d joint_state = get_joint_state(robot_measures);
+
+    /*
+        set the initial position and quaternion
+    */
+    M4d transformation_matrix = direct_kin(joint_state);
+    M3d rotation_matrix = transformation_matrix.block(0, 0, 3, 3);
+    Qd init_quaternion(rotation_matrix);
 
     /*
         perform the movement
     */
-    Path p = differential_inverse_kin_quaternions(mr, ip, fp, iq, fq);
-    move(p, pub);
+    for (int i = 1; i <= trajectory.rows(); ++i)
+    {
+        /*
+            robot measures
+        */
+        robot_measures = read_robot_measures();
+        joint_state = get_joint_state(robot_measures);
+
+        /*
+            set the initial position
+        */
+        transformation_matrix = direct_kin(joint_state);
+        V3d position = transformation_matrix.block(0, 3, 3, 1);
+
+        std::cout << "transformation matrix =\n" << transformation_matrix << std::endl;
+
+        /*
+            frame quaternion
+        */
+        Qd prev_quaternion;
+        if (i == 1) prev_quaternion = init_quaternion; else prev_quaternion = slerp(time_frame * (i - 1), init_quaternion, final_quaternion);
+        Qd quaternion = slerp(time_frame * i, init_quaternion, final_quaternion);
+
+        /*
+            path 
+        */
+        Path p = differential_inverse_kin_quaternions(robot_measures, position, trajectory.row(i - 1), prev_quaternion, quaternion);
+        move(p, pub);
+    }
 }
 
 /*
@@ -674,6 +764,8 @@ void move_end_effector(V3d fp, V3d feu, ros::Publisher pub)
 */
 void toggle_gripper(ros::Publisher pub, bool force_opening)
 {
+    ROS_INFO("toggle gripper");
+
     /*
         path, joint state and gripper values
     */
@@ -730,4 +822,12 @@ void toggle_gripper(ros::Publisher pub, bool force_opening)
         move the gripper
     */
     move(p, pub);
+}
+
+void set_safe_configuration(ros::Publisher pub)
+{
+    V6d joint_state = get_joint_state(read_robot_measures());
+    V6d safe_joint_state;
+    safe_joint_state << joint_state(0), safe_joint_conf;
+    M4d transformation_matrix = direct_kin(safe_joint_state);
 }
