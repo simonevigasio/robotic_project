@@ -10,6 +10,8 @@ import tf
 
 from os import path
 
+import open3d as o3d
+
 import cv2
 from cv_bridge import CvBridge
 
@@ -65,13 +67,41 @@ def detection(msg: Image) -> None:
         lego_list.append((name, conf, x1, y1, x2, y2))
 
     sliceBox = slice(y1, y2) , slice(x1,  x2)
-    # image = img[sliceBox]
+    image = img[sliceBox]
+        
+    hsv_image = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
 
+    #come image metti i punti della boundery box
+    color_ranges = {
+            'red': [(0, 50, 50), (10, 255, 255)], # Hue range: 0-10
+            'green': [(36, 50, 50), (70, 255, 255)], # Hue range: 36-70
+            'blue': [(90, 50, 50), (130, 255, 255)], # Hue range: 90-130
+            'yellow': [(20, 50, 50), (35, 255, 255)], # Hue range: 20-35
+            'fuchsia': [(145, 50, 50), (175, 255, 255)], # Hue range: 145-175
+            'orange': [(11, 50, 50), (25, 255, 255)] # Hue range: 11-25
+        }
+    
+    mask = np.zeros(image.shape[:2],dtype=np.uint8)
+
+    for color_range in color_ranges.values():
+        lower_color = np.array(color_range[0])
+        upper_color = np.array(color_range[1])
+        color_mask = cv2.inRange(hsv_image, lower_color, upper_color)
+        mask = cv2.bitwise_or(mask, color_mask)
+
+    result = cv2.bitwise_and(image, image, mask=mask)
+    gray_image = cv2.cvtColor(result, cv2.COLOR_BGR2GRAY)
+    mask = cv2.inRange(gray_image, 1, 255)  # Assuming black pixels have a value of 0
+
+    # Find the non-black points using the mask
+    non_black_points = cv2.findNonZero(mask)
     points_2D = []
     
-    for x in range(x1, x2+1):
-            for y in range(y1, y2+1):
-                points_2D.append([x, y])
+    if non_black_points is not None:
+        # Iterate through the non-black points and append [x, y] to points_2D
+        for point in non_black_points:
+            x, y = point[0]
+            points_2D.append([x + int(bboxes[0]['xmin']), y + int(bboxes[0]['ymin'])])
 
     point_cloud2_msg = rospy.wait_for_message("/ur5/zed_node/point_cloud/cloud_registered", PointCloud2)
 
@@ -89,8 +119,6 @@ def detection(msg: Image) -> None:
 
     points_3d = point_cloud2.read_points(point_cloud2_msg, field_names=['x','y','z'], skip_nans=False, uvs=zed_points if multiple_points else [zed_points])
 
-    print(points_3d)
-
     Ry = np.array([[ 0.     , -0.49948,  0.86632],[-1.     ,  0.     ,  0.     ],[-0.     , -0.86632, -0.49948]])
     pos_zed = np.array([-0.4 ,  0.59,  1.4 ])
 
@@ -103,6 +131,11 @@ def detection(msg: Image) -> None:
         point = Ry.dot(point) + pos_zed
         point = np.array(point)
         data_world.append(point)
+
+    # point_cloud = o3d.geometry.PointCloud()
+    # point_cloud.points = o3d.utility.Vector3dVector(data_world)
+    # o3d.io.write_point_cloud("/home/vegas/ros_ws/src/robotic_project/vision/output.pcd", point_cloud)
+    # print("done")
     
     global center_point
     center_point = np.mean(data_world, axis=0)
@@ -165,7 +198,7 @@ def tan_calculation(alpha1, alpha2, distance1, distance2):
     
 def three_points_selection(points):
     points_array=np.array(points)
-    selected_points = points_array[abs(points_array[:,2] - brick_high) <=brick_error]
+    selected_points = points_array[abs(points_array[:,2] - brick_high) <= brick_error]
 
     min_x_index = np.argmin(selected_points[:,0])
     min_y_index = np.argmin(selected_points[:,1])
@@ -210,15 +243,15 @@ def pose_detection(points):
     global final_alpha
     final_alpha = tan_calculation(alpha1, alpha2, distance1, distance2)
 
-    print("Rotation")
-    print(min_x)
-    print(min_y)
-    print(max_y)
-    print(distance1)
-    print(distance2)
-    print(alpha1)
-    print(alpha2)
-    print(final_alpha)
+    # print("Rotation")
+    # print(min_x)
+    # print(min_y)
+    # print(max_y)
+    # print(distance1)
+    # print(distance2)
+    # print(alpha1)
+    # print(alpha2)
+    # print(final_alpha)
 
 if __name__ ==  '__main__':
     obtain_brick_pose_server()

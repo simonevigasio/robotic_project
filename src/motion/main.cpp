@@ -65,7 +65,7 @@ int main(int argc, char **argv)
 
         set_safe_configuration(pub);
 
-        V3d w_final_dest(0.3, 0.5, 0);
+        V3d w_final_dest(0.3, 0.3, 0);
         V3d b_final_dest = world_to_base(w_final_dest);
         b_final_dest(2) = 0.5;
 
