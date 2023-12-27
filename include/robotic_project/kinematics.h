@@ -43,6 +43,8 @@ M4d direct_kin(V6d js);
 InverseConfigurations inverse_kin(V3d P60, M3d R60);
 Jacobian jacobian(V6d q);
 
+M3d rotation_matrix_z_axis(double alpha);
+
 V3d x(double t, V3d x1, V3d x2);
 Qd slerp(double t, Qd q1, Qd q2);
 
@@ -57,11 +59,10 @@ Path close_gripper(V8d m_rt);
 V8d read_robot_measures();
 V6d get_joint_state(V8d m_rt);
 void move(Path mv, ros::Publisher pub);
+void set_safe_configuration(ros::Publisher pub);
 
 void move_end_effector(V3d final_position, M3d final_rotation_matrix, ros::Publisher pub);
 void toggle_gripper(ros::Publisher pub, bool force_opening = false);
-
-void set_safe_configuration(ros::Publisher pub);
 
 Trajectory build_trajectory(V3d final_position);
 

@@ -32,33 +32,59 @@ int main(int argc, char **argv)
             log the location given from the vision service
         */
         std::cout << srv.response.p.position << std::endl;
+        std::cout << "orientation z = " << srv.response.p.orientation.z << std::endl;
 
-        /* 
-            open gripper
-        */
         toggle_gripper(pub, true);
 
-        /*
-            compute the point based on the base frame
-        */
-        V3d world_brick_position;
-        world_brick_position << srv.response.p.position.x, srv.response.p.position.y, srv.response.p.position.z;
-        world_brick_position << 0.3, 0.3, 0.5;
+        M3d brick_rotation_matrix = rotation_matrix_z_axis(-srv.response.p.orientation.z); 
+        V3d world_brick_position(srv.response.p.position.x, srv.response.p.position.y, srv.response.p.position.z);
         V3d base_brick_position = world_to_base(world_brick_position);
+
+        set_safe_configuration(pub);
+
         base_brick_position(2) = 0.5;
+        Trajectory tr = build_trajectory(base_brick_position);
+        std::cout << tr << std::endl;
+        for (int i = 0; i < tr.rows(); ++i)
+        {   
+            V6d js = get_joint_state(read_robot_measures());
+            M4d t = direct_kin(js);
+            M3d r; if (i != tr.rows() - 1) r = t.block(0, 0, 3, 3); else r = brick_rotation_matrix;
+            move_end_effector(tr.row(i), r, pub);
+        }
 
-        // V6d joint_state = get_joint_state(read_robot_measures());
-        // M4d t = direct_kin(joint_state);
-        // V3d p = t.block(0, 3, 3, 1);
-        // M3d r = t.block(0, 0, 3, 3);
-        // Qd q(r), fq(M3d::Identity());
+        V6d js = get_joint_state(read_robot_measures());
+        M4d t = direct_kin(js);
+        std::cout << t << std::endl;
 
-        // Path path = differential_inverse_kin_quaternions(read_robot_measures(), p, base_brick_position, q, fq);
-        // move(path, pub);
+        base_brick_position(2) = 0.72;
+        move_end_effector(base_brick_position, brick_rotation_matrix, pub);
+        toggle_gripper(pub);
+        base_brick_position(2) = 0.5;
+        move_end_effector(base_brick_position, brick_rotation_matrix, pub);
 
-        // move_end_effector(base_brick_position, M3d::Identity(), pub);
+        set_safe_configuration(pub);
 
-        std::cout << read_robot_measures() << std::endl;
+        V3d w_final_dest(0.3, 0.5, 0);
+        V3d b_final_dest = world_to_base(w_final_dest);
+        b_final_dest(2) = 0.5;
+
+        tr = build_trajectory(b_final_dest);
+        std::cout << tr << std::endl;
+
+        for (int i = 0; i < tr.rows(); ++i)
+        {
+            V6d js = get_joint_state(read_robot_measures());
+            M4d t = direct_kin(js);
+            M3d r = M3d::Identity();
+            move_end_effector(tr.row(i), r, pub);
+        }
+
+        b_final_dest(2) = 0.72;
+        move_end_effector(b_final_dest, M3d::Identity(), pub);
+        toggle_gripper(pub);
+        b_final_dest(2) = 0.5;
+        move_end_effector(b_final_dest, M3d::Identity(), pub);
 
         ROS_INFO("end");
     }
