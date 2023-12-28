@@ -25,9 +25,9 @@ from torchvision.transforms import functional as F
 import math
 
 model = None
+
 center_point = None
 final_alpha = None
-ready = False
 brick_high = 0.89
 brick_error = 0.001
 value_error = 0.001
@@ -141,9 +141,6 @@ def detection(msg: Image) -> None:
     center_point = np.mean(data_world, axis=0)
 
     pose_detection(data_world)
-
-    global ready
-    ready = True
     
 def obtain_brick_pose_server():
     rospy.init_node('vision_node')
@@ -156,16 +153,15 @@ def obtain_brick_pose_server():
 
     model = torch.hub.load(path_yolo, "custom", path_weigths, source='local')
 
-    rospy.Subscriber("/ur5/zed_node/left_raw/image_raw_color", Image, callback = detection, queue_size=1)
+    msg = rospy.wait_for_message('/ur5/zed_node/left_raw/image_raw_color', Image, timeout=5)
+    detection(msg)
+    # rospy.Subscriber("/ur5/zed_node/left_raw/image_raw_color", Image, callback = detection, queue_size=1)
+
     point_cloud2_msg = rospy.wait_for_message("/ur5/zed_node/point_cloud/cloud_registered", PointCloud2)
 
     s = rospy.Service('obtain_brick_pose', ObtainBrickPose, handle_obtain_brick_pose)
-
-    global ready 
-    while (not ready): None
-
-    print("the vision is ready to deliver the block position.")
-
+    
+    print("the vision is ready to deliver the brick position and orientation")
     rospy.spin()
 
 def tan_calculation(alpha1, alpha2, distance1, distance2):
@@ -211,7 +207,6 @@ def three_points_selection(points):
     min_y_selected_points = selected_points[abs(selected_points[:,1] - min_y_value) <= value_error]
     max_y_selected_points = selected_points[abs(selected_points[:,1] - max_y_value) <= value_error]
 
-
     min_y_final_index = np.argmin(min_y_selected_points[:,0])
     max_y_final_index = np.argmin(max_y_selected_points[:,0])
 
@@ -242,16 +237,6 @@ def pose_detection(points):
 
     global final_alpha
     final_alpha = tan_calculation(alpha1, alpha2, distance1, distance2)
-
-    # print("Rotation")
-    # print(min_x)
-    # print(min_y)
-    # print(max_y)
-    # print(distance1)
-    # print(distance2)
-    # print(alpha1)
-    # print(alpha2)
-    # print(final_alpha)
 
 if __name__ ==  '__main__':
     obtain_brick_pose_server()
