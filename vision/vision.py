@@ -10,7 +10,7 @@ import tf
 
 from os import path
 
-import open3d as o3d
+#import open3d as o3d
 
 import cv2
 from cv_bridge import CvBridge
@@ -25,27 +25,74 @@ from torchvision.transforms import functional as F
 import math
 
 model = None
-
 center_point = None
 final_alpha = None
-brick_high = 0.89
+
+brick_short_side = None
+brick_long_side = None
+brick_high = None
+
+table_high = 0.88
+brick_high_detection = None
 brick_error = 0.001
 value_error = 0.001
+
 minimum_distance = 0.005
-minimum_brick_lenght = 0.01
-lenght_error =0.005
+lenght_error = 0.005
+
+brick_center_point = None
+
 PI=3.14
+
+brick_value = {
+        'X1-Y1-Z2': [0.03, 0.03 , 0.02],
+        'X1-Y2-Z1': [0.03, 0.06 , 0.01],
+        'X1-Y2-Z2-CHAMFER': [0.03, 0.06 , 0.02],
+        'X1-Y2-Z2-TWINFILLET': [0.03, 0.06 , 0.02],
+        'X1-Y2-Z2': [0.03, 0.06 , 0.02],
+        'X1-Y3-Z2-FILLET': [0.01, 0.09 , 0.02],
+        'X1-Y3-Z2': [0.03, 0.09 , 0.02],
+        'X1-Y4-Z1': [0.03, 0.12 , 0.01],
+        'X1-Y4-Z2': [0.03, 0.12 , 0.02],
+    }
+
+brick_value_WRONG = {
+        'X1-Y1-Z2': [0.01, 0.01 , 0.02],
+        'X1-Y2-Z1': [0.01, 0.02 , 0.01],
+        'X1-Y2-Z2-CHAMFER': [0.01, 0.02 , 0.02],
+        'X1-Y2-Z2-TWINFILLET': [0.01, 0.02 , 0.02],
+        'X1-Y2-Z2': [0.01, 0.02 , 0.02],
+        'X1-Y3-Z2-FILLET': [0.01, 0.03 , 0.02],
+        'X1-Y3-Z2': [0.01, 0.03 , 0.02],
+        'X1-Y4-Z1': [0.01, 0.04 , 0.01],
+        'X1-Y4-Z2': [0.01, 0.04 , 0.02],
+    }
 
 def handle_obtain_brick_pose(req):
     # to compute with the model
     p = Pose()
-    p.position.x = center_point[0]
-    p.position.y = center_point[1]
-    p.position.z = center_point[2]
+    p.position.x = brick_center_point[0]
+    p.position.y = brick_center_point[1]
+    p.position.z = brick_center_point[2]
     p.orientation.z = final_alpha
     
     print('Returning brick location')
     return ObtainBrickPoseResponse(p)
+
+def get_brick_value(name):
+    value = np.array(brick_value[name])
+
+    global brick_short_side
+    brick_short_side = value[0]
+
+    global brick_long_side
+    brick_long_side = value[1]
+
+    global brick_high
+    brick_high = value[2]
+
+    global brick_high_detection
+    brick_high_detection = table_high + brick_high/2
 
 def detection(msg: Image) -> None:
     # convert received image (bgr8 format) to a cv2 image
@@ -59,12 +106,15 @@ def detection(msg: Image) -> None:
     bboxes = result.pandas().xyxy[0].to_dict(orient="records")
     for bbox in bboxes:
         name = bbox['name']
+        get_brick_value(name)
         conf = bbox['confidence']
         x1 = int(bbox['xmin'])
         y1 = int(bbox['ymin'])
         x2 = int(bbox['xmax'])
         y2 = int(bbox['ymax'])
         lego_list.append((name, conf, x1, y1, x2, y2))
+
+
 
     sliceBox = slice(y1, y2) , slice(x1,  x2)
     image = img[sliceBox]
@@ -141,6 +191,9 @@ def detection(msg: Image) -> None:
     center_point = np.mean(data_world, axis=0)
 
     pose_detection(data_world)
+
+    global ready
+    ready = True
     
 def obtain_brick_pose_server():
     rospy.init_node('vision_node')
@@ -152,49 +205,17 @@ def obtain_brick_pose_server():
     path_weigths = path.join(path_vision, 'best.pt')
 
     model = torch.hub.load(path_yolo, "custom", path_weigths, source='local')
-
-    msg = rospy.wait_for_message('/ur5/zed_node/left_raw/image_raw_color', Image, timeout=5)
+    msg = rospy.wait_for_message("/ur5/zed_node/left_raw/image_raw_color", Image)
     detection(msg)
-    # rospy.Subscriber("/ur5/zed_node/left_raw/image_raw_color", Image, callback = detection, queue_size=1)
-
-    point_cloud2_msg = rospy.wait_for_message("/ur5/zed_node/point_cloud/cloud_registered", PointCloud2)
 
     s = rospy.Service('obtain_brick_pose', ObtainBrickPose, handle_obtain_brick_pose)
-    
-    print("the vision is ready to deliver the brick position and orientation")
+
+    print("the vision is ready to deliver the block position.")
     rospy.spin()
-
-def tan_calculation(alpha1, alpha2, distance1, distance2):
-    result = 0
-
-    if (alpha1==-1 and alpha2==-1):
-        print("TANGENT ERROR")
-        result = 0
-    elif (alpha1==-1):
-        result = -alpha2
-    elif (alpha2==-1):
-        result = alpha1
-    elif (alpha1<alpha2):
-        result = alpha1
-    else:
-        result = -alpha2
-
-    if(result==0):
-        return result
-    elif(result<0):
-        if abs(distance2 - minimum_brick_lenght) <= lenght_error:
-            return result
-        else:
-            return result + PI/2
-    else:
-        if abs(distance1 - minimum_brick_lenght) <= lenght_error:
-            return result
-        else:
-            return result - PI/2
     
 def three_points_selection(points):
     points_array=np.array(points)
-    selected_points = points_array[abs(points_array[:,2] - brick_high) <= brick_error]
+    selected_points = points_array[abs(points_array[:,2] - brick_high_detection) <= brick_error]
 
     min_x_index = np.argmin(selected_points[:,0])
     min_y_index = np.argmin(selected_points[:,1])
@@ -212,9 +233,43 @@ def three_points_selection(points):
 
     min_y_final_point = min_y_selected_points[min_y_final_index]
     max_y_final_point = max_y_selected_points[max_y_final_index]
+
+    #if abs(min_y_final_point[0] - min_x_final_point[0]) <= 0.002:
+    #    min_y_final_point = min_x_final_point
+    #elif abs(max_y_final_point[0] - min_x_final_point[0]) <= 0.002:
+    #    max_y_final_point = min_x_final_point
     
     final_points = np.array([min_y_final_point, min_x_final_point, max_y_final_point])
     return final_points
+
+def alpha_calculation(alpha1, alpha2, distance1, distance2):
+    if (alpha1==-1 and alpha2==-1):
+        print("TANGENT ERROR")
+        return 0
+    elif (alpha2==-1 or (alpha1!=-1 and alpha1<alpha2)):
+        result = alpha1
+        if abs(distance1 - brick_short_side) <= lenght_error:
+            return result
+        else:
+            return result - PI/2
+    else:
+        result = - alpha2
+        if abs(distance2 - brick_short_side) <= lenght_error:
+            return result
+        else:
+            return result + PI/2
+
+def brick_center_detection(point):
+    # to delete when you'll get the right AI
+    global brick_long_side
+    brick_long_side = 0.12
+
+    z = brick_high_detection
+    x = point[0] + ( brick_long_side*math.cos(final_alpha) + brick_short_side*math.sin(abs(final_alpha)) )/2
+    y = point[1] - np.sign(final_alpha) * ( brick_short_side*math.cos(final_alpha) - brick_long_side*math.sin(abs(final_alpha)) ) / 2
+
+    global brick_center_point
+    brick_center_point = np.array([x, y, z])
 
 def pose_detection(points):
     three_points = three_points_selection(points)
@@ -226,17 +281,29 @@ def pose_detection(points):
     distance2 = math.dist(min_x,max_y)
 
     if(distance1>minimum_distance):
-        alpha1 = math.atan2(min_y[0]-min_x[0],min_x[1]-min_y[1])
+        alpha1 = abs(math.atan2(min_y[0]-min_x[0],min_x[1]-min_y[1]))
     else:
         alpha1 = -1
 
     if(distance2>minimum_distance):
-        alpha2 = math.atan2(max_y[0]-min_x[0],max_y[1]-min_x[1])
+        alpha2 = abs(math.atan2(max_y[0]-min_x[0],max_y[1]-min_x[1]))
     else:
         alpha2 = -1
 
+    print("  ")
+    print("alpha1 ")
+    print(alpha1)
+    print("distance1 ")
+    print(distance1)
+    print("alpha2 ")
+    print(alpha2)
+    print("distance2 ")
+    print(distance2)
+
     global final_alpha
-    final_alpha = tan_calculation(alpha1, alpha2, distance1, distance2)
+    final_alpha = alpha_calculation(alpha1, alpha2, distance1, distance2)
+    print(final_alpha)
+    brick_center_detection(min_x)
 
 if __name__ ==  '__main__':
     obtain_brick_pose_server()

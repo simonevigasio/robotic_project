@@ -468,8 +468,11 @@ Path differential_inverse_kin_quaternions(V8d mr, V3d i_p, V3d f_p, Qd i_q, Qd f
             compute the jacobian and its inverse in the instant k
         */
         j_k = jacobian(js_k);
-        invj_k = (j_k.transpose() * j_k + Jacobian::Identity() * 0.001).inverse() * j_k.transpose();
-        if (abs(j_k.determinant()) < 0.00001) ROS_INFO("Near singular configuration");
+        invj_k = (j_k.transpose() * j_k + Jacobian::Identity() * 0.0001).inverse() * j_k.transpose();
+        if (abs(j_k.determinant()) < 0.00001) 
+        {
+            ROS_INFO("Near singular configuration");
+        }
             
         /*
             compute the errors in the path
@@ -601,7 +604,7 @@ void move(Path mv, ros::Publisher pub)
     /*
         frequency of how quickly the data are delivered to the robot in Hz
     */
-    ros::Rate loop_rate(40);
+    ros::Rate loop_rate(100);
 
     /*
         iterate the each row of the movement
@@ -651,9 +654,9 @@ void set_safe_configuration(ros::Publisher pub)
 */
 Trajectory build_trajectory(V3d final_position)
 {  
-    int stationary_points_num = 8;
-    Eigen::Matrix<double, 8, 3> stationary_points {
-        {0, 0.1, 0.5}, {0.3, 0.1, 0.5}, {0.4, 0, 0.5},
+    int stationary_points_num = 7;
+    Eigen::Matrix<double, 7, 3> stationary_points {
+        {0.3, 0.1, 0.5}, {0.4, 0, 0.5},
         {0.3, -0.3, 0.5}, {0, -0.4, 0.5},
         {-0.3, -0.3, 0.5}, {-0.4, 0, 0.5},
         {-0.3, 0.1, 0.5}
@@ -739,7 +742,15 @@ void move_end_effector(V3d final_position, M3d final_rotation_matrix, ros::Publi
     M3d rotation_matrix = transformation_matrix.block(0, 0, 3, 3);
     V3d position = transformation_matrix.block(0, 3, 3, 1);
     Qd init_quaternion(rotation_matrix);
+
+    /*
+        compute the trajectory to follow
+    */
     Path p = differential_inverse_kin_quaternions(robot_measures, position, final_position, init_quaternion, final_quaternion);
+
+    /*
+        move the robot according the trajectory
+    */
     move(p, pub);
 }
 
@@ -773,7 +784,7 @@ void toggle_gripper(ros::Publisher pub, bool force_opening)
     /*
         measure of how much the gripper will open
     */
-    const double opening = 0.30;
+    const double opening = 0.50;
 
     /*
         gripper right and left side initial position
@@ -808,4 +819,166 @@ void toggle_gripper(ros::Publisher pub, bool force_opening)
         move the gripper
     */
     move(p, pub);
+}
+
+/*
+    @brief check if the point give is within the workspace
+
+    @param[in] point: point to detect
+*/
+bool point_in_workspce(V3d point)
+{
+    /*
+        limits of the workspace
+    */
+    V2d x_axis_limits(-0.50, 0.5);
+    V2d y_axis_limits(0.10, -0.4);
+    V2d z_axis_limits(0.00, 0.72);
+
+    /*
+        axes to detect
+    */
+    const int x_axis = 0;
+    const int y_axis = 1;
+    const int z_axis = 2;
+
+    /*
+        controls of the three axis of the point
+    */
+    if (point(x_axis) < x_axis_limits(0) || point(x_axis) > x_axis_limits(1)) return false;
+    if (point(y_axis) > y_axis_limits(0) || point(y_axis) < y_axis_limits(1)) return false;
+    if (point(z_axis) < z_axis_limits(0) || point(z_axis) > z_axis_limits(1)) return false;
+    
+    /*
+        in case the point is inside the workspce return true
+    */
+    return true;
+}
+
+/*
+    @brief given an object on the table, the robot will grasp and move it in a new position
+
+    @param[in] object_position: position of the object
+    @param[in] object_orientation: orientation of the object
+    @param[in] final_object_position: position where the robot has to move the object
+    @param[in] final_object_orientation: orientation that the object has to have in the final_object_position
+*/
+void grasp_and_move_object(V3d object_position, M3d object_orientation, V3d final_object_position, M3d final_object_orientation, ros::Publisher pub)
+{   
+    /*
+        z axis values for the movement and grasp operation
+    */
+    const double move_height = 0.50;
+    const double grasp_height = 0.72;
+    const int z_axis = 2;
+
+    /*
+        impose a safe initial configuartion to establish a correct movement
+    */
+    set_safe_configuration(pub);
+
+    /*
+        impose the height of the movement
+    */
+    object_position(z_axis) = move_height;
+
+    /*
+        check the velodity of the position givem
+    */
+    if (!point_in_workspce(object_position)) ROS_INFO("warning: obj position is not inside the workspce");
+    // the ex is not thrown
+
+    /*
+        compute the path to do to reach the position of the object
+    */
+    Trajectory path = build_trajectory(object_position);
+
+    /*
+        move the robot following the path
+    */
+    for (int i = 0; i < path.rows(); ++i)
+    {   
+        V6d joint_state = get_joint_state(read_robot_measures()); 
+        M4d transformation_matrix = direct_kin(joint_state);
+        M3d rotation_matrix = M3d::Identity();
+        if (i == path.rows() - 1) rotation_matrix = object_orientation;
+        move_end_effector(path.row(i), rotation_matrix, pub);
+    }
+
+    /*
+        open gripper
+    */
+    toggle_gripper(pub, true);
+
+    /*
+        move downswards
+    */
+    object_position(z_axis) = grasp_height;
+    move_end_effector(object_position, object_orientation, pub);
+
+    /*
+        close gripper
+    */
+    toggle_gripper(pub);
+
+    /*
+        move upwards
+    */
+    object_position(z_axis) = move_height;
+    move_end_effector(object_position, object_orientation, pub);
+
+    /*
+        reset the safe configuration
+    */
+    set_safe_configuration(pub);
+
+    /*
+        impose the height for the movement
+    */
+    final_object_position(z_axis) = move_height;
+
+    /*
+        check the velodity of the position givem
+    */
+    if (!point_in_workspce(final_object_position)) ROS_INFO("warning: final obj position is not inside the workspce");
+    // the ex is not thrown
+
+    /*
+        compute the path to reach the final position to pose the object
+    */
+    path = build_trajectory(final_object_position);
+
+    /*
+        move the robot following the path
+    */
+    for (int i = 0; i < path.rows(); ++i)
+    {
+        V6d joint_state = get_joint_state(read_robot_measures());
+        M4d transformation_matrix = direct_kin(joint_state);
+        M3d rotation_matrix = M3d::Identity();
+        if (i == path.rows() - 1) rotation_matrix = final_object_orientation;
+        move_end_effector(path.row(i), rotation_matrix, pub);
+    }
+
+    /*
+        move downwards
+    */
+    final_object_position(z_axis) = grasp_height;
+    move_end_effector(final_object_position, final_object_orientation, pub);
+
+    /*
+        open gripper
+    */
+    toggle_gripper(pub);
+
+    /*
+        move upwards
+    */
+    final_object_position(z_axis) = move_height;
+    move_end_effector(final_object_position, final_object_orientation, pub);
+
+    /*
+        reset the safe configuration
+    */
+    set_safe_configuration(pub);
 }
