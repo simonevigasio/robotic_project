@@ -22,6 +22,9 @@ from pathlib import Path
 from matplotlib import pyplot as plt
 from torchvision.transforms import functional as F
 
+from sklearn.cluster import KMeans
+from collections import Counter
+
 import math
 
 model = None
@@ -114,13 +117,6 @@ def detection(msg: Image) -> None:
         y2 = int(bbox['ymax'])
         lego_list.append((name, conf, x1, y1, x2, y2))
 
-
-
-    sliceBox = slice(y1, y2) , slice(x1,  x2)
-    image = img[sliceBox]
-        
-    hsv_image = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
-
     #come image metti i punti della boundery box
     color_ranges = {
             'red': [(0, 50, 50), (10, 255, 255)], # Hue range: 0-10
@@ -130,13 +126,36 @@ def detection(msg: Image) -> None:
             'fuchsia': [(145, 50, 50), (175, 255, 255)], # Hue range: 145-175
             'orange': [(11, 50, 50), (25, 255, 255)] # Hue range: 11-25
         }
-    
+
+    # loop
+    sliceBox = slice(y1, y2) , slice(x1,  x2)
+    image = img[sliceBox]
+        
+    image_hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
+    image_hsv = image_hsv.reshape(image_hsv.shape[0]*image_hsv.shape[1], 3)
+    clf = KMeans(n_clusters = 5)
+    clf.fit_predict(image_hsv)
+    center_colors = clf.cluster_centers_
+
+    for color, (lower, upper) in color_ranges.items():
+        if lower[0] <= center_colors[0][0] <= upper[0]:
+            print(color)
+
+    # detection by color
+    global brick_long_side
+    if color == 'red': brick_long_side = 0.03
+    if color == 'green': brick_long_side = 0.06
+    if color == 'blue': brick_long_side = 0.09
+    if color == 'yellow': brick_long_side = 0.12
+    print(brick_long_side)
+
     mask = np.zeros(image.shape[:2],dtype=np.uint8)
+    image_hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
 
     for color_range in color_ranges.values():
         lower_color = np.array(color_range[0])
         upper_color = np.array(color_range[1])
-        color_mask = cv2.inRange(hsv_image, lower_color, upper_color)
+        color_mask = cv2.inRange(image_hsv, lower_color, upper_color)
         mask = cv2.bitwise_or(mask, color_mask)
 
     result = cv2.bitwise_and(image, image, mask=mask)
@@ -260,10 +279,6 @@ def alpha_calculation(alpha1, alpha2, distance1, distance2):
             return result + PI/2
 
 def brick_center_detection(point):
-    # to delete when you'll get the right AI
-    global brick_long_side
-    brick_long_side = 0.12
-
     z = brick_high_detection
     x = point[0] + ( brick_long_side*math.cos(final_alpha) + brick_short_side*math.sin(abs(final_alpha)) )/2
     y = point[1] - np.sign(final_alpha) * ( brick_short_side*math.cos(final_alpha) - brick_long_side*math.sin(abs(final_alpha)) ) / 2

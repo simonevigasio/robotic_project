@@ -70,8 +70,8 @@
                          </shader>
  
                          <lighting>1</lighting> 
- 		                <ambient>0 1 0 1</ambient> 
- 		                <diffuse>0 1 0 1</diffuse> 
+ 		                <ambient>1 0 0 1</ambient> 
+ 		                <diffuse>1 0 0 1</diffuse> 
  		                <specular>0 0 0 1</specular> 
  		                <emissive>0 0 0 1</emissive> 
                      </material>

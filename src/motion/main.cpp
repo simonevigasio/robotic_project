@@ -49,7 +49,7 @@ int main(int argc, char **argv)
         /*
             compute the final position of the brick
         */
-        V3d world_final_destination(0.3, 0.3, 0);
+        V3d world_final_destination(0.2, 0.3, 0);
         V3d base_final_destination = world_to_base(world_final_destination);
 
         /*

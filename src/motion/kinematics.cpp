@@ -833,7 +833,7 @@ bool point_in_workspce(V3d point)
     */
     V2d x_axis_limits(-0.50, 0.5);
     V2d y_axis_limits(0.10, -0.4);
-    V2d z_axis_limits(0.00, 0.72);
+    V2d z_axis_limits(0.00, 0.75);
 
     /*
         axes to detect
