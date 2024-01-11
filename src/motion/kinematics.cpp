@@ -15,6 +15,7 @@
 // Standard
 #include <iostream>
 #include <cmath>
+#include <stdexcept>
 
 M4d T10f(double th1)
 {
@@ -471,7 +472,8 @@ Path differential_inverse_kin_quaternions(V8d mr, V3d i_p, V3d f_p, Qd i_q, Qd f
         invj_k = (j_k.transpose() * j_k + Jacobian::Identity() * 0.0001).inverse() * j_k.transpose();
         if (abs(j_k.determinant()) < 0.00001) 
         {
-            ROS_INFO("Near singular configuration");
+            ROS_WARN("Near singular configuration");
+            throw std::exception();
         }
             
         /*
@@ -604,7 +606,7 @@ void move(Path mv, ros::Publisher pub)
     /*
         frequency of how quickly the data are delivered to the robot in Hz
     */
-    ros::Rate loop_rate(100);
+    ros::Rate loop_rate(200);
 
     /*
         iterate the each row of the movement
@@ -644,7 +646,18 @@ void set_safe_configuration(ros::Publisher pub)
     M4d transformation_matrix = direct_kin(safe_joint_state);
     M3d rotation_matrix = transformation_matrix.block(0, 0, 3, 3);
     V3d position = transformation_matrix.block(0, 3, 3, 1);
-    move_end_effector(position, rotation_matrix, pub);
+
+    /*
+        apply movement 
+    */
+    try
+    {
+        move_end_effector(position, rotation_matrix, pub);
+    }
+    catch(...)
+    {
+        throw;
+    }
 }
 
 /*
@@ -722,8 +735,6 @@ Trajectory build_trajectory(V3d final_position)
 */
 void move_end_effector(V3d final_position, M3d final_rotation_matrix, ros::Publisher pub)
 {
-    ROS_INFO("move end-effector");
-
     /*
         compute the final quaternion
     */
@@ -746,7 +757,15 @@ void move_end_effector(V3d final_position, M3d final_rotation_matrix, ros::Publi
     /*
         compute the trajectory to follow
     */
-    Path p = differential_inverse_kin_quaternions(robot_measures, position, final_position, init_quaternion, final_quaternion);
+    Path p;
+    try 
+    {
+        p = differential_inverse_kin_quaternions(robot_measures, position, final_position, init_quaternion, final_quaternion);
+    }
+    catch(...) 
+    {
+        throw;
+    } 
 
     /*
         move the robot according the trajectory
@@ -779,7 +798,7 @@ void toggle_gripper(ros::Publisher pub, bool force_opening)
     /*
         measure of how much the gripper will close
     */
-    const double closing = -0.20; 
+    const double closing = -0.50; 
 
     /*
         measure of how much the gripper will open
@@ -870,115 +889,129 @@ void grasp_and_move_object(V3d object_position, M3d object_orientation, V3d fina
     */
     const double move_height = 0.50;
     const double grasp_height = 0.72;
+    const double leave_height = 0.70;
     const int z_axis = 2;
 
-    /*
-        impose a safe initial configuartion to establish a correct movement
-    */
-    set_safe_configuration(pub);
-
-    /*
-        impose the height of the movement
-    */
-    object_position(z_axis) = move_height;
-
-    /*
-        check the velodity of the position givem
-    */
-    if (!point_in_workspce(object_position)) ROS_INFO("warning: obj position is not inside the workspce");
-    // the ex is not thrown
-
-    /*
-        compute the path to do to reach the position of the object
-    */
-    Trajectory path = build_trajectory(object_position);
-
-    /*
-        move the robot following the path
-    */
-    for (int i = 0; i < path.rows(); ++i)
-    {   
-        V6d joint_state = get_joint_state(read_robot_measures()); 
-        M4d transformation_matrix = direct_kin(joint_state);
-        M3d rotation_matrix = M3d::Identity();
-        if (i == path.rows() - 1) rotation_matrix = object_orientation;
-        move_end_effector(path.row(i), rotation_matrix, pub);
-    }
-
-    /*
-        open gripper
-    */
-    toggle_gripper(pub, true);
-
-    /*
-        move downswards
-    */
-    object_position(z_axis) = grasp_height;
-    move_end_effector(object_position, object_orientation, pub);
-
-    /*
-        close gripper
-    */
-    toggle_gripper(pub);
-
-    /*
-        move upwards
-    */
-    object_position(z_axis) = move_height;
-    move_end_effector(object_position, object_orientation, pub);
-
-    /*
-        reset the safe configuration
-    */
-    set_safe_configuration(pub);
-
-    /*
-        impose the height for the movement
-    */
-    final_object_position(z_axis) = move_height;
-
-    /*
-        check the velodity of the position givem
-    */
-    if (!point_in_workspce(final_object_position)) ROS_INFO("warning: final obj position is not inside the workspce");
-    // the ex is not thrown
-
-    /*
-        compute the path to reach the final position to pose the object
-    */
-    path = build_trajectory(final_object_position);
-
-    /*
-        move the robot following the path
-    */
-    for (int i = 0; i < path.rows(); ++i)
+    try
     {
-        V6d joint_state = get_joint_state(read_robot_measures());
-        M4d transformation_matrix = direct_kin(joint_state);
-        M3d rotation_matrix = M3d::Identity();
-        if (i == path.rows() - 1) rotation_matrix = final_object_orientation;
-        move_end_effector(path.row(i), rotation_matrix, pub);
+        /*
+            impose a safe initial configuartion to establish a correct movement
+        */
+        set_safe_configuration(pub);
+        
+        /*
+            impose the height of the movement
+        */
+        object_position(z_axis) = move_height;
+
+        /*
+            check the velodity of the position givem
+        */
+        if (!point_in_workspce(object_position)) 
+        {
+            ROS_ERROR("obj position is not inside the workspce");
+            exit(1);
+        }
+
+        /*
+            compute the path to do to reach the position of the object
+        */
+        Trajectory path = build_trajectory(object_position);
+
+        /*
+            move the robot following the path
+        */
+        for (int i = 0; i < path.rows(); ++i)
+        {   
+            V6d joint_state = get_joint_state(read_robot_measures()); 
+            M4d transformation_matrix = direct_kin(joint_state);
+            M3d rotation_matrix = M3d::Identity();
+            if (i == path.rows() - 1) rotation_matrix = object_orientation;
+            move_end_effector(path.row(i), rotation_matrix, pub);
+        }
+
+        /*
+            open gripper
+        */
+        toggle_gripper(pub, true);
+
+        /*
+            move downswards
+        */
+        object_position(z_axis) = grasp_height;
+        move_end_effector(object_position, object_orientation, pub);
+
+        /*
+            close gripper
+        */
+        toggle_gripper(pub);
+
+        /*
+            move upwards
+        */
+        object_position(z_axis) = move_height;
+        move_end_effector(object_position, object_orientation, pub);
+        
+
+        /*
+            reset the safe configuration
+        */
+        set_safe_configuration(pub);
+
+        /*
+            impose the height for the movement
+        */
+        final_object_position(z_axis) = move_height;
+
+        /*
+            check the velodity of the position givem
+        */
+        if (!point_in_workspce(final_object_position)) 
+        {
+            ROS_ERROR("final obj position is not inside the workspce");
+            exit(1);
+        }
+
+        /*
+            compute the path to reach the final position to pose the object
+        */
+        path = build_trajectory(final_object_position);
+
+        /*
+            move the robot following the path
+        */
+        for (int i = 0; i < path.rows(); ++i)
+        {
+            V6d joint_state = get_joint_state(read_robot_measures());
+            M4d transformation_matrix = direct_kin(joint_state);
+            M3d rotation_matrix = M3d::Identity();
+            if (i == path.rows() - 1) rotation_matrix = final_object_orientation;
+            move_end_effector(path.row(i), rotation_matrix, pub);
+        }
+        /*
+            move downwards
+        */
+        final_object_position(z_axis) = leave_height;
+        move_end_effector(final_object_position, final_object_orientation, pub);
+
+        /*
+            open gripper
+        */
+        toggle_gripper(pub);
+
+        /*
+            move upwards
+        */
+        final_object_position(z_axis) = move_height;
+        move_end_effector(final_object_position, final_object_orientation, pub);
+
+        /*
+            reset the safe configuration
+        */
+        set_safe_configuration(pub);
     }
-
-    /*
-        move downwards
-    */
-    final_object_position(z_axis) = grasp_height;
-    move_end_effector(final_object_position, final_object_orientation, pub);
-
-    /*
-        open gripper
-    */
-    toggle_gripper(pub);
-
-    /*
-        move upwards
-    */
-    final_object_position(z_axis) = move_height;
-    move_end_effector(final_object_position, final_object_orientation, pub);
-
-    /*
-        reset the safe configuration
-    */
-    set_safe_configuration(pub);
+    catch(...)
+    {
+        throw;
+    }
 }

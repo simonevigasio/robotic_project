@@ -1,2 +1,4 @@
 ---
-geometry_msgs/Pose p 
+geometry_msgs/Pose[] p 
+int64 length
+string[] name
