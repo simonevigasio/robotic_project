@@ -30,3 +30,6 @@ The objective of this project was to create a self-sufficient robot capable of e
     ├── vision.py
     └── yolov5
 ```
+This project consists of two ROS nodes. One is specifically designed for object detection of the bricks on the table, and it calculates their localization and orientation. The other node is focused on robot motion and task planning.
+
+The link between the two nodes is established through a service. The "vision.py" file functions as the server, while the "main.cpp" file acts as the client, tasked with patiently waiting until the brick detection is complete.
