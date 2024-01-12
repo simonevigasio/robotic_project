@@ -61,7 +61,7 @@ catkin_make
 ## Run Project
 
 ### Setup
-Inside this file ``ros_ws/src/locosim/robot_control/lab_exercises/lab_palopoli/params.py`` change the line 32 with:
+Inside this file ``ros_ws/src/locosim/robot_control/base_controllers/params.py`` change the line 32 with:
 ```
 'gripper_sim': True,
 ```
