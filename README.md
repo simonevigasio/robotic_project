@@ -23,6 +23,9 @@ The objective of this project was to create a self-sufficient robot capable of e
 ├── package.xml
 ├── src
 │   └── motion
+│       ├── Eigen
+│       ├── kinematics.cpp
+│       └── main.cpp
 ├── srv
 │   └── ObtainBrickPose.srv
 └── vision
