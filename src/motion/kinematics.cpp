@@ -91,199 +91,6 @@ M4d direct_kin(V6d js)
     return T10f(js(0)) * T21f(js(1)) * T32f(js(2)) * T43f(js(3)) * T54f(js(4)) * T65f(js(5));
 }
 
-InverseConfigurations inverse_kin(V3d P60, M3d R60)
-{
-    M4d T60;
-    T60.setZero();
-    T60.block(0, 0, 3, 3) = R60;
-    T60.block(0, 3, 3, 1) = P60;
-    T60(3, 3) = 1;
-
-    // Theta 1
-
-    Eigen::Vector4d P50;
-    P50 = T60 * Eigen::Vector4d(0, 0, -d(5), 1);
-    double th1_1 = atan2(P50(1), P50(0)) + acos(d(3) / hypot(P50(1), P50(0))) + M_PI / 2;
-    double th1_2 = atan2(P50(1), P50(0)) - acos(d(3) / hypot(P50(1), P50(0))) + M_PI / 2;
-
-    // Theta 5
-
-    double th5_1 = +acos((P60(0) * sin(th1_1) - P60(1) * cos(th1_1) - d(3)) / d(5));
-    double th5_2 = -acos((P60(0) * sin(th1_1) - P60(1) * cos(th1_1) - d(3)) / d(5));
-    double th5_3 = +acos((P60(0) * sin(th1_2) - P60(1) * cos(th1_2) - d(3)) / d(5));
-    double th5_4 = -acos((P60(0) * sin(th1_2) - P60(1) * cos(th1_2) - d(3)) / d(5));
-
-    // Theta 6
-
-    M4d T06;
-    T06 = T60.inverse();
-
-    V3d Xhat;
-    Xhat = T06.block(0, 0, 3, 1);
-    V3d Yhat;
-    Yhat = T06.block(0, 1, 3, 1);
-
-    double th6_1 = atan2(((-Xhat(1) * sin(th1_1) + Yhat(1) * cos(th1_1)) / sin(th5_1)), ((Xhat(0) * sin(th1_1) - Yhat(0) * cos(th1_1)) / sin(th5_1)));
-    double th6_2 = atan2(((-Xhat(1) * sin(th1_1) + Yhat(1) * cos(th1_1)) / sin(th5_2)), ((Xhat(0) * sin(th1_1) - Yhat(0) * cos(th1_1)) / sin(th5_2)));
-    double th6_3 = atan2(((-Xhat(1) * sin(th1_2) + Yhat(1) * cos(th1_2)) / sin(th5_3)), ((Xhat(0) * sin(th1_2) - Yhat(0) * cos(th1_2)) / sin(th5_3)));
-    double th6_4 = atan2(((-Xhat(1) * sin(th1_2) + Yhat(1) * cos(th1_2)) / sin(th5_4)), ((Xhat(0) * sin(th1_2) - Yhat(0) * cos(th1_2)) / sin(th5_4)));
-
-    // Theta 3
-
-    M4d T41m;
-    V3d P41_1;
-    V3d P41_2;
-    V3d P41_3;
-    V3d P41_4;
-    double P41xz_1;
-    double P41xz_2;
-    double P41xz_3;
-    double P41xz_4;
-
-    T41m = T10f(th1_1).inverse() * T60 * T65f(th6_1).inverse() * T54f(th5_1).inverse();
-    P41_1 = T41m.block(0, 3, 3, 1);
-    P41xz_1 = hypot(P41_1(0), P41_1(2));
-
-    T41m = T10f(th1_1).inverse() * T60 * T65f(th6_2).inverse() * T54f(th5_2).inverse();
-    P41_2 = T41m.block(0, 3, 3, 1);
-    P41xz_2 = hypot(P41_2(0), P41_2(2));
-
-    T41m = T10f(th1_2).inverse() * T60 * T65f(th6_3).inverse() * T54f(th5_3).inverse();
-    P41_3 = T41m.block(0, 3, 3, 1);
-    P41xz_3 = hypot(P41_3(0), P41_3(2));
-
-    T41m = T10f(th1_2).inverse() * T60 * T65f(th6_4).inverse() * T54f(th5_4).inverse();
-    P41_4 = T41m.block(0, 3, 3, 1);
-    P41xz_4 = hypot(P41_4(0), P41_4(2));
-
-    double th3_1;
-
-    if ((pow(P41xz_1, 2) - pow(a(1), 2) - pow(a(2), 2)) / (2 * a(1) * a(2)) > 1)
-    {
-        th3_1 = 0;
-    }
-    else if ((pow(P41xz_1, 2) - pow(a(1), 2) - pow(a(2), 2)) / (2 * a(1) * a(2)) < -1)
-    {
-        th3_1 = M_PI;
-    }
-    else
-    {
-        th3_1 = acos((pow(P41xz_1, 2) - pow(a(1), 2) - pow(a(2), 2)) / (2 * a(1) * a(2)));
-    }
-
-    double th3_2;
-
-    if ((pow(P41xz_2, 2) - pow(a(1), 2) - pow(a(2), 2)) / (2 * a(1) * a(2)) > 1)
-    {
-        th3_2 = 0;
-    }
-    else if ((pow(P41xz_2, 2) - pow(a(1), 2) - pow(a(2), 2)) / (2 * a(1) * a(2)) < -1)
-    {
-        th3_2 = M_PI;
-    }
-    else
-    {
-        th3_2 = acos((pow(P41xz_2, 2) - pow(a(1), 2) - pow(a(2), 2)) / (2 * a(1) * a(2)));
-    }
-
-    double th3_3;
-
-    if ((pow(P41xz_3, 2) - pow(a(1), 2) - pow(a(2), 2)) / (2 * a(1) * a(2)) > 1)
-    {
-        th3_3 = 0;
-    }
-    else if ((pow(P41xz_3, 2) - pow(a(1), 2) - pow(a(2), 2)) / (2 * a(1) * a(2)) < -1)
-    {
-        th3_3 = M_PI;
-    }
-    else
-    {
-        th3_3 = acos((pow(P41xz_3, 2) - pow(a(1), 2) - pow(a(2), 2)) / (2 * a(1) * a(2)));
-    }
-
-    double th3_4;
-
-    if ((pow(P41xz_4, 2) - pow(a(1), 2) - pow(a(2), 2)) / (2 * a(1) * a(2)) > 1)
-    {
-        th3_4 = 0;
-    }
-    else if ((pow(P41xz_4, 2) - pow(a(1), 2) - pow(a(2), 2)) / (2 * a(1) * a(2)) < -1)
-    {
-        th3_4 = M_PI;
-    }
-    else
-    {
-        th3_4 = acos((pow(P41xz_4, 2) - pow(a(1), 2) - pow(a(2), 2)) / (2 * a(1) * a(2)));
-    }
-
-    double th3_5 = -th3_1;
-    double th3_6 = -th3_2;
-    double th3_7 = -th3_3;
-    double th3_8 = -th3_4;
-
-    // Theta 2
-
-    double th2_1 = atan2(-P41_1(2), -P41_1(0)) - asin((-a(2) * sin(th3_1)) / P41xz_1);
-    double th2_2 = atan2(-P41_2(2), -P41_2(0)) - asin((-a(2) * sin(th3_2)) / P41xz_2);
-    double th2_3 = atan2(-P41_3(2), -P41_3(0)) - asin((-a(2) * sin(th3_3)) / P41xz_3);
-    double th2_4 = atan2(-P41_4(2), -P41_4(0)) - asin((-a(2) * sin(th3_4)) / P41xz_4);
-
-    double th2_5 = atan2(-P41_1(2), -P41_1(0)) - asin((a(2) * sin(th3_1)) / P41xz_1);
-    double th2_6 = atan2(-P41_2(2), -P41_2(0)) - asin((a(2) * sin(th3_2)) / P41xz_2);
-    double th2_7 = atan2(-P41_3(2), -P41_3(0)) - asin((a(2) * sin(th3_3)) / P41xz_3);
-    double th2_8 = atan2(-P41_4(2), -P41_4(0)) - asin((a(2) * sin(th3_4)) / P41xz_4);
-
-    // Theta 4
-
-    M4d T43m;
-    V3d Xhat43;
-    T43m = T32f(th3_1).inverse() * T21f(th2_1).inverse() * T10f(th1_1).inverse() * T60 * T65f(th6_1).inverse() * T54f(th5_1).inverse();
-    Xhat43 = T43m.block(0, 0, 3, 1);
-    float th4_1 = atan2(Xhat43(1), Xhat43(0));
-
-    T43m = T32f(th3_2).inverse() * T21f(th2_2).inverse() * T10f(th1_1).inverse() * T60 * T65f(th6_2).inverse() * T54f(th5_2).inverse();
-    Xhat43 = T43m.block(0, 0, 3, 1);
-    float th4_2 = atan2(Xhat43(1), Xhat43(0));
-
-    T43m = T32f(th3_3).inverse() * T21f(th2_3).inverse() * T10f(th1_2).inverse() * T60 * T65f(th6_3).inverse() * T54f(th5_3).inverse();
-    Xhat43 = T43m.block(0, 0, 3, 1);
-    float th4_3 = atan2(Xhat43(1), Xhat43(0));
-
-    T43m = T32f(th3_4).inverse() * T21f(th2_4).inverse() * T10f(th1_2).inverse() * T60 * T65f(th6_4).inverse() * T54f(th5_4).inverse();
-    Xhat43 = T43m.block(0, 0, 3, 1);
-    float th4_4 = atan2(Xhat43(1), Xhat43(0));
-
-    T43m = T32f(th3_5).inverse() * T21f(th2_5).inverse() * T10f(th1_1).inverse() * T60 * T65f(th6_1).inverse() * T54f(th5_1).inverse();
-    Xhat43 = T43m.block(0, 0, 3, 1);
-    float th4_5 = atan2(Xhat43(1), Xhat43(0));
-
-    T43m = T32f(th3_6).inverse() * T21f(th2_6).inverse() * T10f(th1_1).inverse() * T60 * T65f(th6_2).inverse() * T54f(th5_2).inverse();
-    Xhat43 = T43m.block(0, 0, 3, 1);
-    float th4_6 = atan2(Xhat43(1), Xhat43(0));
-
-    T43m = T32f(th3_7).inverse() * T21f(th2_7).inverse() * T10f(th1_2).inverse() * T60 * T65f(th6_3).inverse() * T54f(th5_3).inverse();
-    Xhat43 = T43m.block(0, 0, 3, 1);
-    float th4_7 = atan2(Xhat43(1), Xhat43(0));
-
-    T43m = T32f(th3_8).inverse() * T21f(th2_8).inverse() * T10f(th1_2).inverse() * T60 * T65f(th6_4).inverse() * T54f(th5_4).inverse();
-    Xhat43 = T43m.block(0, 0, 3, 1);
-    float th4_8 = atan2(Xhat43(1), Xhat43(0));
-
-    // Configurations
-
-    InverseConfigurations conf;
-    conf << th1_1, th2_1, th3_1, th4_1, th5_1, th6_1,
-        th1_1, th2_2, th3_2, th4_2, th5_2, th6_2,
-        th1_2, th2_3, th3_3, th4_3, th5_3, th6_3,
-        th1_2, th2_4, th3_4, th4_4, th5_4, th6_4,
-        th1_1, th2_5, th3_5, th4_5, th5_1, th6_1,
-        th1_1, th2_6, th3_6, th4_6, th5_2, th6_2,
-        th1_2, th2_7, th3_7, th4_7, th5_3, th6_3,
-        th1_2, th2_8, th3_8, th4_8, th5_4, th6_4;
-
-    return conf;
-}
-
 Jacobian jacobian(V6d js)
 {
     Jacobian J;
@@ -650,14 +457,7 @@ void set_safe_configuration(ros::Publisher pub)
     /*
         apply movement 
     */
-    try
-    {
-        move_end_effector(position, rotation_matrix, pub);
-    }
-    catch(...)
-    {
-        throw;
-    }
+    move_end_effector(position, rotation_matrix, pub);
 }
 
 /*
@@ -757,15 +557,7 @@ void move_end_effector(V3d final_position, M3d final_rotation_matrix, ros::Publi
     /*
         compute the trajectory to follow
     */
-    Path p;
-    try 
-    {
-        p = differential_inverse_kin_quaternions(robot_measures, position, final_position, init_quaternion, final_quaternion);
-    }
-    catch(...) 
-    {
-        throw;
-    } 
+    Path p = differential_inverse_kin_quaternions(robot_measures, position, final_position, init_quaternion, final_quaternion);
 
     /*
         move the robot according the trajectory
@@ -892,126 +684,119 @@ void grasp_and_move_object(V3d object_position, M3d object_orientation, V3d fina
     const double leave_height = 0.70;
     const int z_axis = 2;
 
-    try
+    /*
+        impose a safe initial configuartion to establish a correct movement
+    */
+    set_safe_configuration(pub);
+    
+    /*
+        impose the height of the movement
+    */
+    object_position(z_axis) = move_height;
+
+    /*
+        check the velodity of the position givem
+    */
+    if (!point_in_workspce(object_position)) 
     {
-        /*
-            impose a safe initial configuartion to establish a correct movement
-        */
-        set_safe_configuration(pub);
-        
-        /*
-            impose the height of the movement
-        */
-        object_position(z_axis) = move_height;
-
-        /*
-            check the velodity of the position givem
-        */
-        if (!point_in_workspce(object_position)) 
-        {
-            ROS_ERROR("obj position is not inside the workspce");
-            exit(1);
-        }
-
-        /*
-            compute the path to do to reach the position of the object
-        */
-        Trajectory path = build_trajectory(object_position);
-
-        /*
-            move the robot following the path
-        */
-        for (int i = 0; i < path.rows(); ++i)
-        {   
-            V6d joint_state = get_joint_state(read_robot_measures()); 
-            M4d transformation_matrix = direct_kin(joint_state);
-            M3d rotation_matrix = M3d::Identity();
-            if (i == path.rows() - 1) rotation_matrix = object_orientation;
-            move_end_effector(path.row(i), rotation_matrix, pub);
-        }
-
-        /*
-            open gripper
-        */
-        toggle_gripper(pub, true);
-
-        /*
-            move downswards
-        */
-        object_position(z_axis) = grasp_height;
-        move_end_effector(object_position, object_orientation, pub);
-
-        /*
-            close gripper
-        */
-        toggle_gripper(pub);
-
-        /*
-            move upwards
-        */
-        object_position(z_axis) = move_height;
-        move_end_effector(object_position, object_orientation, pub);
-        
-
-        /*
-            reset the safe configuration
-        */
-        set_safe_configuration(pub);
-
-        /*
-            impose the height for the movement
-        */
-        final_object_position(z_axis) = move_height;
-
-        /*
-            check the velodity of the position givem
-        */
-        if (!point_in_workspce(final_object_position)) 
-        {
-            ROS_ERROR("final obj position is not inside the workspce");
-            exit(1);
-        }
-
-        /*
-            compute the path to reach the final position to pose the object
-        */
-        path = build_trajectory(final_object_position);
-
-        /*
-            move the robot following the path
-        */
-        for (int i = 0; i < path.rows(); ++i)
-        {
-            V6d joint_state = get_joint_state(read_robot_measures());
-            M4d transformation_matrix = direct_kin(joint_state);
-            M3d rotation_matrix = M3d::Identity();
-            if (i == path.rows() - 1) rotation_matrix = final_object_orientation;
-            move_end_effector(path.row(i), rotation_matrix, pub);
-        }
-        /*
-            move downwards
-        */
-        final_object_position(z_axis) = leave_height;
-        move_end_effector(final_object_position, final_object_orientation, pub);
-
-        /*
-            open gripper
-        */
-        toggle_gripper(pub);
-
-        /*
-            move upwards
-        */
-        final_object_position(z_axis) = move_height;
-        move_end_effector(final_object_position, final_object_orientation, pub);
-
-        /*
-            reset the safe configuration
-        */
-        set_safe_configuration(pub);
+        ROS_ERROR("obj position is not inside the workspce");
+        exit(1);
     }
-    catch(...)
+
+    /*
+        compute the path to do to reach the position of the object
+    */
+    Trajectory path = build_trajectory(object_position);
+
+    /*
+        move the robot following the path
+    */
+    for (int i = 0; i < path.rows(); ++i)
+    {   
+        V6d joint_state = get_joint_state(read_robot_measures()); 
+        M4d transformation_matrix = direct_kin(joint_state);
+        M3d rotation_matrix = M3d::Identity();
+        if (i == path.rows() - 1) rotation_matrix = object_orientation;
+        move_end_effector(path.row(i), rotation_matrix, pub);
+    }
+
+    /*
+        open gripper
+    */
+    toggle_gripper(pub, true);
+
+    /*
+        move downswards
+    */
+    object_position(z_axis) = grasp_height;
+    move_end_effector(object_position, object_orientation, pub);
+
+    /*
+        close gripper
+    */
+    toggle_gripper(pub);
+
+    /*
+        move upwards
+    */
+    object_position(z_axis) = move_height;
+    move_end_effector(object_position, object_orientation, pub);
+    
+
+    /*
+        reset the safe configuration
+    */
+    set_safe_configuration(pub);
+
+    /*
+        impose the height for the movement
+    */
+    final_object_position(z_axis) = move_height;
+
+    /*
+        check the velodity of the position givem
+    */
+    if (!point_in_workspce(final_object_position)) 
     {
-        throw;
+        ROS_ERROR("final obj position is not inside the workspce");
+        exit(1);
     }
+
+    /*
+        compute the path to reach the final position to pose the object
+    */
+    path = build_trajectory(final_object_position);
+
+    /*
+        move the robot following the path
+    */
+    for (int i = 0; i < path.rows(); ++i)
+    {
+        V6d joint_state = get_joint_state(read_robot_measures());
+        M4d transformation_matrix = direct_kin(joint_state);
+        M3d rotation_matrix = M3d::Identity();
+        if (i == path.rows() - 1) rotation_matrix = final_object_orientation;
+        move_end_effector(path.row(i), rotation_matrix, pub);
+    }
+    /*
+        move downwards
+    */
+    final_object_position(z_axis) = leave_height;
+    move_end_effector(final_object_position, final_object_orientation, pub);
+
+    /*
+        open gripper
+    */
+    toggle_gripper(pub);
+
+    /*
+        move upwards
+    */
+    final_object_position(z_axis) = move_height;
+    move_end_effector(final_object_position, final_object_orientation, pub);
+
+    /*
+        reset the safe configuration
+    */
+    set_safe_configuration(pub);
 }

@@ -107,14 +107,7 @@ int main(int argc, char **argv)
                 /*
                     trigger movements
                 */
-                try
-                {
-                    grasp_and_move_object(base_brick_position, brick_rotation_matrix, base_final_destination, M3d::Identity(), pub);
-                }
-                catch(std::exception& e)
-                {
-                    exit(1);
-                }
+                grasp_and_move_object(base_brick_position, brick_rotation_matrix, base_final_destination, M3d::Identity(), pub);
             }
         }
         
