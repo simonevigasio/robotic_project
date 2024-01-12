@@ -42,11 +42,9 @@ The project was tested on ubuntu 20.04 with ROS Noetic.
 To make it works we use [locosim](https://github.com/mfocchi/locosim) repository. 
 So, first of all clone locosim repository on your machine following the respective instructions.
 
-Inside the ros_ws/src where you have imported the locosim package, write these commands:
+Inside the ros_ws/src where you have imported the locosim package, write this command:
 ```
 git clone https://github.com/SV00/robotic_project.git
-cd ..
-catkin_make
 ```
 Now, you have to install the vision component. Inside the ros_ws directory write:
 ```
@@ -55,4 +53,9 @@ git clone https://github.com/ultralytics/yolov5.git
 cd yolov5
 pip3 install -r requirements.txt
 pip install torchvision==0.13.0
+```
+Finally, always inside ros_ws folder compile the project:
+```
+catkin_make install
+. devel/setup.bash
 ```
