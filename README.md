@@ -39,4 +39,4 @@ The link between the two nodes is established through a service. The "vision.py"
 
 ## Installation
 The project was tested on ubuntu 20.04 with ROS Noetic. 
-To make it works we use [link text itself]: https://github.com/mfocchi/locosim repository 
+To make it works we use [link text itself]:(https://github.com/mfocchi/locosim) repository 
