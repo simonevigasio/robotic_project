@@ -7,8 +7,7 @@ from robotic_project.srv import ObtainBrickPose, ObtainBrickPoseResponse
 import numpy as np
 import torch
 import tf
-
-from os import path
+import os
 
 import cv2
 from cv_bridge import CvBridge
@@ -282,9 +281,10 @@ if __name__ ==  '__main__':
     rospy.init_node('vision_node')
 
     #Path creation
-    path_yolo = "/home/vegas/ros_ws/src/robotic_project/vision/yolov5"
-    path_vision = "/home/vegas/ros_ws/src/robotic_project/vision"
-    path_weigths = path.join(path_vision, 'best.pt')
+    home_path = os.path.expanduser('~')
+    path_yolo = os.path.join(home_path, "ros_ws/src/robotic_project/vision/yolov5")
+    path_vision = os.path.join(home_path, "ros_ws/src/robotic_project/vision")
+    path_weigths = os.path.join(path_vision, 'best.pt')
 
     #Model loading
     model = torch.hub.load(path_yolo, "custom", path_weigths, source='local')
@@ -299,5 +299,5 @@ if __name__ ==  '__main__':
 
     s = rospy.Service('obtain_brick_pose', ObtainBrickPose, handle_obtain_bricks_informations)
 
-    print("the vision is ready to deliver the block position.")
+    print("the vision is ready to deliver the block position")
     rospy.spin()
