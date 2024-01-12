@@ -36,3 +36,7 @@ The objective of this project was to create a self-sufficient robot capable of e
 This project consists of two ROS nodes. One is specifically designed for object detection of the bricks on the table, and it calculates their localization and orientation. The other node is focused on robot motion and task planning.
 
 The link between the two nodes is established through a service. The "vision.py" file functions as the server, while the "main.cpp" file acts as the client, tasked with patiently waiting until the brick detection is complete.
+
+## Installation
+The project was tested on ubuntu 20.04 with ROS Noetic. 
+To make it works we use [link text itself]: https://github.com/mfocchi/locosim repository 
