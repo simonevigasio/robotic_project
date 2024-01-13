@@ -51,7 +51,7 @@ cd src/robotic_project/vision
 git clone https://github.com/ultralytics/yolov5.git
 cd yolov5
 pip3 install -r requirements.txt
-pip install torchvision==0.13.0
+pip install torchvision
 ```
 Finally, always inside ros_ws folder compile the project:
 ```
