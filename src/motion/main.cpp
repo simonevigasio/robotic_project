@@ -16,11 +16,6 @@
 #include "std_msgs/Float64MultiArray.h"
 #include "robotic_project/ObtainBrickPose.h"
 
-bool are_similar(const double a, const double b) 
-{ 
-    return abs(a - b) <= 0.1; 
-}
-
 V2d brick_final_position(std::string brick_type)
 {
     if (brick_type == "X1-Y1-Z2") return V2d {0.2, 0.7};
@@ -58,25 +53,9 @@ int main(int argc, char **argv)
         */
         for (int i = 0; i < srv.response.length; ++i)
         {
-            for (int j = i + 1; j < srv.response.length; ++j)
-            {
-                if (are_similar(srv.response.p[i].position.x, srv.response.p[j].position.x) && 
-                    are_similar(srv.response.p[i].position.y, srv.response.p[j].position.y))
-                    valid_index[i] = false;
-            }
             std::cout << "localization brick " << i +1 << ":\n" << srv.response.p[i].position;
             std::cout << "orientation brick " << i + 1 << ":\n" << srv.response.p[i].orientation.z << std::endl;
         }
-
-        /*
-            manual naming of bricks
-        */
-        std::vector<std::string> manual_bricks_names;
-        manual_bricks_names.push_back("X1-Y2-Z2");
-        manual_bricks_names.push_back("X1-Y4-Z2");
-        manual_bricks_names.push_back("X1-Y3-Z2");
-        manual_bricks_names.push_back("X1-Y1-Z2");
-        int c = 0;
         
         for (int i = 0; i < srv.response.length; ++i)
         {
@@ -99,7 +78,6 @@ int main(int argc, char **argv)
                 /*
                     compute the final position of the brick
                 */
-                srv.response.name[i] = manual_bricks_names[c++];
                 V2d final_position = brick_final_position(srv.response.name[i]);
                 V3d world_final_destination(final_position(0), final_position(1), 0);
                 V3d base_final_destination = world_to_base(world_final_destination);
