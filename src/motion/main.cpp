@@ -19,7 +19,7 @@
 V2d brick_final_position(std::string brick_type)
 {
     if (brick_type == "X1-Y1-Z2") return V2d {0.2, 0.7};
-    if (brick_type == "X1-Y2-Z1") return V2d {0.3, 0.7};
+    if (brick_type == "X1-Y2-Z1") return V2d {0.6, 0.7};
     if (brick_type == "X1-Y2-Z2") return V2d {0.4, 0.7};
     if (brick_type == "X1-Y2-Z2-CHAMFER") return V2d {0.2, 0.6};
     if (brick_type == "X1-Y2_Z2-TWINFILLET") return V2d {0.3, 0.6};

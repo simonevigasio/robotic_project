@@ -605,7 +605,7 @@ void move(Path mv, ros::Publisher pub)
     /*
         frequency of how quickly the data are delivered to the robot in Hz
     */
-    ros::Rate loop_rate(200);
+    ros::Rate loop_rate(120);
 
     /*
         iterate the each row of the movement
