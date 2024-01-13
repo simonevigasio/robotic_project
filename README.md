@@ -41,11 +41,11 @@ The project was tested on ubuntu 20.04 with ROS Noetic.
 To make it works we use [locosim](https://github.com/mfocchi/locosim) repository. 
 So, first of all clone locosim repository on your machine following the respective instructions.
 
-Inside the ros_ws/src where you have imported the locosim package, write this command:
+Inside the ros_ws/src where you have imported the locosim package, type this command:
 ```
 git clone https://github.com/SV00/robotic_project.git
 ```
-Now, you have to install the vision component. Inside the ros_ws directory write:
+Now, you have to install the vision component. Inside the ros_ws directory type:
 ```
 cd src/robotic_project/vision
 git clone https://github.com/ultralytics/yolov5.git
