@@ -1,6 +1,6 @@
 
 # Robotic Project
-Foundament of Robotic project year 2023/2024
+Fundament of Robotic project year 2023/2024
 
 Authors:
 1. Gabriel Fumagalli
@@ -9,7 +9,7 @@ Authors:
 
 ## Project Description
 
-The objective of this project was to create a self-sufficient robot capable of executing pick-and-place operations. The robotic arm employed for manipulation is the Ur5, equipped with a zed camera for perception. The pick-and-place operation involves selecting various bricks and accurately positioning them in their predetermined locations. The robot possesses the capability to autonomously identify the bricks and execute the pick-and-place task. 
+The objective of this project was to create a self-sufficient robot capable of executing pick-and-place operations. The robotic arm employed for manipulation is the UR5, equipped with a zed camera for perception. The pick-and-place operation involves selecting various bricks and accurately positioning them in their predetermined locations. The robot possesses the capability to autonomously identify the bricks and execute the pick-and-place task. 
 
 ## Folder
 
@@ -66,17 +66,17 @@ Inside this file ``ros_ws/src/locosim/robot_control/base_controllers/params.py``
 'gripper_sim': True,
 ```
 Now, into the ``robotic_project/world`` folder bring the "robotic_project.world" file into the ``ros_ws/src/locosim/ros_impedance_controller/worlds`` folder.
-Then, into ``ros_ws/src/locosim/robot_control/base_controllers/ur5_generic.py`` line 71, write:
+Then, into ``ros_ws/src/locosim/robot_control/base_controllers/ur5_generic.py`` change the line 71 with:
 ```
 self.world_name = 'robotic_project.world'
 ```
-In the bottom of the file ``~/.bashrc`` write:
+In the bottom of the file ``~/.bashrc`` add:
 ```
 export GAZEBO_MODEL_PATH=$GAZEBO_MODEL_PATH:/$HOME/ros_ws/src/robotic_project/models
 ```
 This command is for allowing ros to detect the models imported by the repository
 
-Finally, compile the project into the ros_ws folder agan to save the changes:
+Finally, compile the project into the ros_ws folder again to save the changes:
 ```
 catkin_make
 . devel/setup.bash
@@ -88,11 +88,11 @@ In the first terminal type:
 ```
 python3 -i ros_ws/src/locosim/robot_control/base_controllers/ur5_generic.py
 ```
+
 In the second terminal type:
 ```
 rosrun robotic_project vision
 ```
-
 wait until the message ``the vision is ready to deliver the block position`` is prompted.
 
 Then, in the third terminal type:
