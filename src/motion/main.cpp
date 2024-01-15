@@ -16,18 +16,19 @@
 #include "std_msgs/Float64MultiArray.h"
 #include "robotic_project/ObtainBrickPose.h"
 
+int i = 0;
+
 V2d brick_final_position(std::string brick_type)
 {
     if (brick_type == "X1-Y1-Z2") return V2d {0.2, 0.7};
     if (brick_type == "X1-Y2-Z1") return V2d {0.6, 0.7};
     if (brick_type == "X1-Y2-Z2") return V2d {0.4, 0.7};
-    if (brick_type == "X1-Y2-Z2-CHAMFER") return V2d {0.2, 0.6};
+    if (brick_type == "X1-Y2-Z2-CHAMFER") return V2d {0.2, 0.7};
     if (brick_type == "X1-Y2_Z2-TWINFILLET") return V2d {0.3, 0.6};
     if (brick_type == "X1-Y3-Z2") return V2d {0.4, 0.6};
     if (brick_type == "X1-Y3-Z2-FILLET") return V2d {0.2, 0.5};
     if (brick_type == "X1-Y4-Z1") return V2d {0.2, 0.4};
     if (brick_type == "X1-Y4-Z2") return V2d {0.2, 0.3};
-    ROS_ERROR("brick not defined");
     exit(1);
 }
 
@@ -44,23 +45,16 @@ int main(int argc, char **argv)
     robotic_project::ObtainBrickPose srv;
 
     if (service_client.call(srv))
-    {
-        std::vector<bool> valid_index;
-        for (int i = 0; i < srv.response.length; ++i) valid_index.push_back(true);
-
+    {   
         /*
-            log the location and orientation given from the vision service
+            move bricks
         */
         for (int i = 0; i < srv.response.length; ++i)
         {
-            std::cout << "localization brick " << i +1 << ":\n" << srv.response.p[i].position;
-            std::cout << "orientation brick " << i + 1 << ":\n" << srv.response.p[i].orientation.z << std::endl;
-        }
-        
-        for (int i = 0; i < srv.response.length; ++i)
-        {
-            if (valid_index[i])
+            if (valid_bounder_box[i])
             {
+                std::cout << "localization brick " << i +1 << ":\n" << srv.response.p[i].position;
+                std::cout << "orientation brick " << i + 1 << ":\n" << srv.response.p[i].orientation.z << std::endl;
                 /*
                     compute the rotation matrix to get when the robot will grasp the brick
                 */
@@ -70,8 +64,6 @@ int main(int argc, char **argv)
                 /*
                     compute the position of the brick respect the base frame
                 */
-                std::cout << "going to grasp brick in location\n" << srv.response.p[i].position << std::endl;
-                std::cout << "brick name = " << srv.response.name[i] << std::endl;
                 V3d world_brick_position(srv.response.p[i].position.x, srv.response.p[i].position.y, srv.response.p[i].position.z);
                 V3d base_brick_position = world_to_base(world_brick_position);
 

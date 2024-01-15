@@ -24,6 +24,9 @@ from collections import Counter
 
 import math
 
+import warnings
+warnings.filterwarnings("ignore")
+
 bricks_informations = []
 
 table_high = 0.88

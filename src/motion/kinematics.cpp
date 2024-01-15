@@ -587,8 +587,6 @@ void move_end_effector(V3d final_position, M3d final_rotation_matrix, ros::Publi
 */
 void toggle_gripper(ros::Publisher pub, bool force_opening)
 {
-    ROS_INFO("toggle gripper");
-
     /*
         path, joint state and gripper values
     */
@@ -610,7 +608,7 @@ void toggle_gripper(ros::Publisher pub, bool force_opening)
     /*
         measure of how much the gripper will open
     */
-    const double opening = 0.50;
+    const double opening = 0.80;
 
     /*
         gripper right and left side initial position
@@ -695,7 +693,7 @@ void grasp_and_move_object(V3d object_position, M3d object_orientation, V3d fina
         z axis values for the movement and grasp operation
     */
     const double move_height = 0.50;
-    const double grasp_height = 0.72;
+    const double grasp_height = 0.74;
     const double leave_height = 0.70;
     const int z_axis = 2;
 
@@ -756,12 +754,6 @@ void grasp_and_move_object(V3d object_position, M3d object_orientation, V3d fina
     */
     object_position(z_axis) = move_height;
     move_end_effector(object_position, object_orientation, pub);
-    
-
-    /*
-        reset the safe configuration
-    */
-    set_safe_configuration(pub);
 
     /*
         impose the height for the movement
@@ -769,7 +761,7 @@ void grasp_and_move_object(V3d object_position, M3d object_orientation, V3d fina
     final_object_position(z_axis) = move_height;
 
     /*
-        check the velodity of the position givem
+        check the valodity of the position givem
     */
     if (!point_in_workspce(final_object_position)) 
     {
@@ -793,6 +785,7 @@ void grasp_and_move_object(V3d object_position, M3d object_orientation, V3d fina
         if (i == path.rows() - 1) rotation_matrix = final_object_orientation;
         move_end_effector(path.row(i), rotation_matrix, pub);
     }
+
     /*
         move downwards
     */
@@ -809,9 +802,4 @@ void grasp_and_move_object(V3d object_position, M3d object_orientation, V3d fina
     */
     final_object_position(z_axis) = move_height;
     move_end_effector(final_object_position, final_object_orientation, pub);
-
-    /*
-        reset the safe configuration
-    */
-    set_safe_configuration(pub);
 }
