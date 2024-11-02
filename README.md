@@ -6,15 +6,11 @@ Authors:
 2. Simone Vigasio
 3. Stefan Gore
 
-
-
-https://github.com/user-attachments/assets/e65fe301-f40d-4c30-a8f2-4b8ba58d5de7
-
-
-
 ## Project Description
 
 The objective of this project was to create a self-sufficient robot capable of executing pick-and-place operations. The robotic arm employed for manipulation is the UR5, equipped with a zed camera for perception. The pick-and-place operation involves selecting various bricks and accurately positioning them in their predetermined locations. The robot possesses the capability to autonomously identify the bricks and execute the pick-and-place task. 
+
+https://github.com/user-attachments/assets/e65fe301-f40d-4c30-a8f2-4b8ba58d5de7
 
 ## Folder
 
